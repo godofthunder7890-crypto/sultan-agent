@@ -173,7 +173,7 @@ export default function EngineeringScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({
     name: "",
-    client: "",
+    client: "HELL 52",
     description: "",
     amount: "",
     status: "active" as Project["status"],
@@ -199,7 +199,7 @@ export default function EngineeringScreen() {
     });
     setForm({
       name: "",
-      client: "",
+      client: "HELL 52",
       description: "",
       amount: "",
       status: "active",
