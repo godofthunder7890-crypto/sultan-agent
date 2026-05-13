@@ -146,10 +146,21 @@ export default function SettingsScreen() {
 
         {/* API Keys */}
         <Section title="API KEYS">
-          <KeyInput label="Groq API Key" value={settings.groqKey ?? ""} onChange={(v) => updateSettings({ groqKey: v } as never)} placeholder="gsk_..." icon="lightning-bolt" />
-          <KeyInput label="Gemini API Key" value={settings.geminiKey ?? ""} onChange={(v) => updateSettings({ geminiKey: v } as never)} placeholder="AlzaSy..." icon="google" />
-          <View style={{ borderBottomWidth: 0 }}>
-            <KeyInput label="Anthropic API Key" value={settings.anthropicKey ?? ""} onChange={(v) => updateSettings({ anthropicKey: v } as never)} placeholder="sk-ant-..." icon="brain" />
+          <KeyInput label="Groq API Key" value={settings.groqKey ?? ""} onChange={(v) => updateSettings({ groqKey: v })} placeholder="gsk_..." icon="lightning-bolt" />
+          <KeyInput label="ElevenLabs API Key" value={settings.elevenlabsApiKey ?? ""} onChange={(v) => updateSettings({ elevenlabsApiKey: v })} placeholder="sk_..." icon="microphone" />
+          <View style={[styles.keyRow, { borderBottomWidth: 0 }]}>
+            <MaterialCommunityIcons name={"account-voice" as never} size={18} color={colors.accent} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[styles.keyLabel, { color: colors.mutedForeground }]}>ElevenLabs Voice ID</Text>
+              <TextInput
+                style={[styles.keyInput, { color: colors.foreground }]}
+                value={settings.elevenlabsVoiceId ?? ""}
+                onChangeText={(v) => updateSettings({ elevenlabsVoiceId: v })}
+                placeholder="21m00Tcm4TlvDq8ikWAM"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="none"
+              />
+            </View>
           </View>
         </Section>
 
