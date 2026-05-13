@@ -274,7 +274,7 @@ export default function SettingsScreen() {
 
   async function testKey(keyId: ApiKeyId) {
     setTestingKey(keyId);
-    const key = (settings as Record<string, string>)[keyId] ?? "";
+    const key = (settings as Record<string, unknown>)[keyId] as string ?? "";
     let ok = false;
 
     try {
@@ -388,7 +388,7 @@ export default function SettingsScreen() {
                 key={keyId}
                 keyId={keyId}
                 config={config}
-                value={(settings as Record<string, string>)[keyId] ?? ""}
+                value={(settings as Record<string, unknown>)[keyId] as string ?? ""}
                 onChange={(v) => updateSettings({ [keyId]: v } as never)}
                 onTest={() => testKey(keyId)}
                 testing={testingKey === keyId}
@@ -396,6 +396,38 @@ export default function SettingsScreen() {
               />
             )
           )}
+        </Section>
+
+        {/* Telegram */}
+        <Section title="TELEGRAM BOT" icon="send-circle-outline">
+          <PlainCard>
+            <SettingRow
+              label="Bot Token"
+              icon="lock-outline"
+              value={settings.telegramBotToken ?? ""}
+              onChange={(v) => updateSettings({ telegramBotToken: v })}
+              placeholder="123456789:ABCdef..."
+              isSecret
+            />
+            <SettingRow
+              label="Default Chat ID"
+              icon="chat-outline"
+              value={settings.telegramChatId ?? ""}
+              onChange={(v) => updateSettings({ telegramChatId: v })}
+              placeholder="@channel ya -100xxxxxxxxxx"
+              last
+            />
+          </PlainCard>
+          <Pressable
+            onPress={() => Linking.openURL("https://t.me/BotFather")}
+            style={[styles.hintLink, { borderColor: "#2AABEE40" }]}
+          >
+            <MaterialCommunityIcons name="send" size={13} color="#2AABEE" />
+            <Text style={[styles.hintLinkText, { color: "#2AABEE" }]}>
+              @BotFather se naya bot banao aur token copy karo
+            </Text>
+            <Ionicons name="open-outline" size={13} color="#2AABEE" />
+          </Pressable>
         </Section>
 
         {/* JARVIX Voice */}
