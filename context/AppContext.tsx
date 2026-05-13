@@ -125,8 +125,9 @@ function genId() {
 }
 
 function safeB64(str: string): string {
+  // btoa is available in React Native globally; handles UTF-8 via encodeURIComponent
   try {
-    return Buffer.from(str, "utf8").toString("base64");
+    return btoa(unescape(encodeURIComponent(str)));
   } catch {
     // Manual UTF-8 to base64 fallback
     const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -198,9 +199,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ]);
 
         if (fbMessages.length > 0) {
-          const sorted = fbMessages.sort((a, b) => a.timestamp - b.timestamp);
-          setMessages(sorted);
-          localSave("messages", sorted);
+          // Only overwrite local if Firebase has newer data
+          const lastFbTs = Math.max(...fbMessages.map(msg => msg.timestamp));
+          const lastLocalTs = m.length > 0 ? Math.max(...m.map(msg => msg.timestamp)) : 0;
+          if (lastFbTs >= lastLocalTs) {
+            const sorted = fbMessages.sort((a, b) => a.timestamp - b.timestamp);
+            setMessages(sorted);
+            localSave("messages", sorted);
+          }
         }
         if (fbProjects.length > 0) {
           setProjects(fbProjects);
