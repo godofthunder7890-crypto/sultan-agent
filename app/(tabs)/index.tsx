@@ -15,93 +15,51 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useApp, type Message } from "@/context/AppContext";
+import { useApp, type Message, MODELS } from "@/context/AppContext";
+import { callAI, webSearch, getProvider } from "@/lib/ai";
 import { useColors } from "@/hooks/useColors";
 
-const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY ?? "";
-
-const SYSTEM_PROMPT = `You are Sultan Agent — a supremely powerful personal AI for Sultan, CEO of MA Engineering. You are like Replit Agent, but smarter, faster, and built exclusively for Sultan.
+const SYSTEM_PROMPT = `You are Sultan Agent — a supremely powerful personal AI for Sultan, CEO of MA Engineering. You are like an ultra-smart assistant — fast, direct, and expert in everything.
 
 Your capabilities:
 - Write, debug, review, and explain any code in any language
-- Analyze business data, quotations, and project plans for MA Engineering  
+- Analyze business data, quotations, and project plans for MA Engineering
 - Give SMM panel insights, pricing strategies, and profit analysis
 - Answer any technical or business question with expert-level depth
 - Think step by step, be concise but thorough
 
-Always respond in the same language Sultan uses (Urdu/English/mix). Be direct, powerful, and deliver real value every time.`;
+Memory System: When Sultan says "yaad rakh" or "remember", the app automatically saves it to Firebase. Acknowledge it naturally.
+Web Search: When search results are provided, summarize them clearly and cite sources.
 
-async function callGroq(
-  messages: { role: string; content: string }[],
-  model: string,
-  groqKey: string
-) {
-  const key = groqKey || GROQ_API_KEY;
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
-      max_tokens: 4096,
-      temperature: 0.7,
-    }),
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.choices[0].message.content as string;
-}
+Always respond in the same language Sultan uses (Urdu/English/mix). Be direct, powerful, and deliver real value every time.`;
 
 function MessageBubble({ msg }: { msg: Message }) {
   const colors = useColors();
   const isUser = msg.role === "user";
-  const time = new Date(msg.timestamp).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const provider = msg.model ? getProvider(msg.model.split("-").slice(0, 3).join("-")) : "groq";
+  const providerColor = provider === "openai" ? "#10A37F" : provider === "gemini" ? "#4285F4" : "#F97316";
 
   return (
-    <View
-      style={[
-        styles.bubbleRow,
-        { justifyContent: isUser ? "flex-end" : "flex-start" },
-      ]}
-    >
+    <View style={[styles.bubbleRow, { justifyContent: isUser ? "flex-end" : "flex-start" }]}>
       {!isUser && (
-        <View
-          style={[styles.avatar, { backgroundColor: colors.accent + "33" }]}
-        >
-          <MaterialCommunityIcons
-            name="robot-excited"
-            size={18}
-            color={colors.accent}
-          />
+        <View style={[styles.avatar, { backgroundColor: colors.accent + "33" }]}>
+          <MaterialCommunityIcons name="robot-excited" size={18} color={colors.accent} />
         </View>
       )}
       <View style={{ maxWidth: "78%" }}>
-        <View
-          style={[
-            styles.bubble,
-            {
-              backgroundColor: isUser ? colors.primary : colors.card,
-              borderColor: isUser ? colors.primary : colors.border,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.bubbleText,
-              { color: isUser ? colors.primaryForeground : colors.foreground },
-            ]}
-          >
+        <View style={[styles.bubble, {
+          backgroundColor: isUser ? colors.primary : colors.card,
+          borderColor: isUser ? colors.primary : colors.border,
+        }]}>
+          <Text style={[styles.bubbleText, { color: isUser ? colors.primaryForeground : colors.foreground }]}>
             {msg.content}
           </Text>
         </View>
         <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
-          {isUser ? "" : `${msg.model ?? "Sultan Agent"} · `}
+          {!isUser && msg.model && (
+            <Text style={{ color: providerColor }}>{msg.model} · </Text>
+          )}
           {time}
         </Text>
       </View>
@@ -114,35 +72,42 @@ function TypingIndicator() {
   return (
     <View style={styles.bubbleRow}>
       <View style={[styles.avatar, { backgroundColor: colors.accent + "33" }]}>
-        <MaterialCommunityIcons
-          name="robot-excited"
-          size={18}
-          color={colors.accent}
-        />
+        <MaterialCommunityIcons name="robot-excited" size={18} color={colors.accent} />
       </View>
-      <View
-        style={[
-          styles.bubble,
-          styles.typingBubble,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-      >
+      <View style={[styles.bubble, styles.typingBubble, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <ActivityIndicator size="small" color={colors.accent} />
-        <Text style={[styles.typingText, { color: colors.mutedForeground }]}>
-          Thinking...
-        </Text>
+        <Text style={[styles.typingText, { color: colors.mutedForeground }]}>Thinking...</Text>
       </View>
     </View>
   );
 }
 
+// Parse commands from user input
+function parseCommand(text: string): { type: 'memory' | 'search' | 'normal'; value: string } {
+  const lower = text.toLowerCase().trim();
+  // Memory commands: "yaad rakh ...", "remember ...", "save ..."
+  const memPrefixes = ["yaad rakh ", "remember ", "save this: ", "note karo "];
+  for (const p of memPrefixes) {
+    if (lower.startsWith(p)) return { type: 'memory', value: text.slice(p.length).trim() };
+  }
+  // Search commands: "/search ...", "search karo ..."
+  if (lower.startsWith("/search ")) return { type: 'search', value: text.slice(8).trim() };
+  if (lower.startsWith("search karo ")) return { type: 'search', value: text.slice(12).trim() };
+  return { type: 'normal', value: text };
+}
+
 export default function ChatScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { messages, addMessage, clearMessages, settings } = useApp();
+  const { messages, addMessage, clearMessages, settings, addMemory, memory, firebaseReady } = useApp();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("Thinking...");
   const flatRef = useRef<FlatList>(null);
+
+  const currentModel = MODELS.find(m => m.id === settings.selectedModel) ?? MODELS[0];
+  const provider = currentModel.provider;
+  const providerColor = provider === "OpenAI" ? "#10A37F" : provider === "Gemini" ? "#4285F4" : "#F97316";
 
   const displayMessages = [...messages].reverse();
 
@@ -150,191 +115,188 @@ export default function ChatScreen() {
     const text = input.trim();
     if (!text || loading) return;
 
-    const groqKey = settings.groqKey || GROQ_API_KEY;
-    if (!groqKey) {
+    setInput("");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    const cmd = parseCommand(text);
+
+    // ── Memory command ──────────────────────────────
+    if (cmd.type === 'memory') {
+      addMessage({ role: "user", content: text });
+      setLoading(true);
+      setLoadingMsg("Yaad kar raha hoon...");
+      await addMemory(cmd.value, []);
+      addMessage({
+        role: "assistant",
+        content: `Yaad kar liya! Firebase mein save ho gaya:\n\n"${cmd.value}"\n\nAbhi tak ${memory.length + 1} cheezein yaad hain.`,
+        model: "Sultan-Memory",
+      });
+      setLoading(false);
+      return;
+    }
+
+    // ── Web Search command ──────────────────────────
+    if (cmd.type === 'search') {
+      addMessage({ role: "user", content: text });
+      setLoading(true);
+      setLoadingMsg("Web search kar raha hoon...");
+      const results = await webSearch(cmd.value, settings.serperKey);
+      setLoadingMsg("Summarize kar raha hoon...");
+      try {
+        const aiSummary = await callAI(
+          [{ role: "user", content: `Web search results for "${cmd.value}":\n\n${results}\n\nIn results ko summarize karo clearly.` }],
+          settings.selectedModel,
+          { groqKey: settings.groqKey, openaiKey: settings.openaiKey, geminiKey: settings.geminiKey, serperKey: settings.serperKey },
+          SYSTEM_PROMPT,
+        );
+        addMessage({ role: "assistant", content: aiSummary, model: settings.selectedModel });
+      } catch {
+        addMessage({ role: "assistant", content: `Search results:\n\n${results}`, model: "Web-Search" });
+      }
+      setLoading(false);
+      return;
+    }
+
+    // ── Normal AI chat ──────────────────────────────
+    const activeKey = provider === "OpenAI" ? settings.openaiKey
+      : provider === "Gemini" ? settings.geminiKey
+      : settings.groqKey;
+
+    if (!activeKey) {
       Alert.alert(
-        "API Key Missing",
-        "Settings tab mein apna Groq API Key daalo. groq.com pe free mein milti hai.",
-        [{ text: "OK" }]
+        `${provider} API Key Missing`,
+        `Settings tab mein apna ${provider} API key daalo.\n${
+          provider === "Groq" ? "groq.com/keys — bilkul free hai" :
+          provider === "OpenAI" ? "platform.openai.com/api-keys" :
+          "aistudio.google.com/app/apikey"
+        }`,
+        [{ text: "OK" }],
       );
       return;
     }
 
-    setInput("");
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
     addMessage({ role: "user", content: text });
-
     setLoading(true);
+    setLoadingMsg("Thinking...");
+
     try {
-      const history = messages.slice(-20).map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-      const reply = await callGroq(
+      const history = messages.slice(-20).map(m => ({ role: m.role, content: m.content }));
+      const reply = await callAI(
         [...history, { role: "user", content: text }],
         settings.selectedModel,
-        groqKey
+        { groqKey: settings.groqKey, openaiKey: settings.openaiKey, geminiKey: settings.geminiKey, serperKey: settings.serperKey },
+        SYSTEM_PROMPT,
       );
-      addMessage({
-        role: "assistant",
-        content: reply,
-        model: settings.selectedModel.split("-").slice(0, 3).join("-"),
-      });
+      addMessage({ role: "assistant", content: reply, model: settings.selectedModel });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
-      addMessage({
-        role: "assistant",
-        content: `Error: ${msg}. Check your API key in Settings.`,
-      });
+      addMessage({ role: "assistant", content: `Kuch galat hua: ${msg}` });
     }
     setLoading(false);
   }
 
   function handleClear() {
-    Alert.alert("Clear Chat", "Delete all messages?", [
+    Alert.alert("Clear Chat", "Saare messages delete honge?", [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Clear",
-        style: "destructive",
-        onPress: () => {
-          clearMessages();
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        },
-      },
+      { text: "Clear", style: "destructive", onPress: () => {
+        clearMessages();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }},
     ]);
   }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 12),
-            backgroundColor: colors.background,
-            borderBottomColor: colors.border,
-          },
-        ]}
-      >
+      <View style={[styles.header, {
+        paddingTop: insets.top + (Platform.OS === "web" ? 67 : 12),
+        backgroundColor: colors.background,
+        borderBottomColor: colors.border,
+      }]}>
         <View style={styles.headerLeft}>
-          <MaterialCommunityIcons
-            name="robot-excited"
-            size={26}
-            color={colors.accent}
-          />
+          <MaterialCommunityIcons name="robot-excited" size={26} color={colors.accent} />
           <View>
-            <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-              Sultan Agent
-            </Text>
-            <Text
-              style={[styles.headerSubtitle, { color: colors.mutedForeground }]}
-            >
-              {settings.selectedModel.split("-").slice(0, 3).join(" ")}
-            </Text>
+            <Text style={[styles.headerTitle, { color: colors.foreground }]}>Sultan Agent</Text>
+            <View style={styles.modelRow}>
+              <View style={[styles.providerDot, { backgroundColor: providerColor }]} />
+              <Text style={[styles.headerSubtitle, { color: colors.mutedForeground }]}>
+                {currentModel.name} · {currentModel.provider}
+              </Text>
+              {firebaseReady && (
+                <View style={[styles.fbDot, { backgroundColor: "#22C55E" }]} />
+              )}
+            </View>
           </View>
         </View>
-        <Pressable onPress={handleClear} style={styles.clearBtn}>
-          <Ionicons name="trash-outline" size={20} color={colors.mutedForeground} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable onPress={handleClear} style={styles.iconBtn}>
+            <Ionicons name="trash-outline" size={20} color={colors.mutedForeground} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Messages */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <FlatList
           ref={flatRef}
           data={displayMessages}
           inverted
-          keyExtractor={(m) => m.id}
+          keyExtractor={m => m.id}
           renderItem={({ item }) => <MessageBubble msg={item} />}
-          ListHeaderComponent={loading ? <TypingIndicator /> : null}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: 8 },
-          ]}
+          ListHeaderComponent={loading ? (
+            <View style={styles.bubbleRow}>
+              <View style={[styles.avatar, { backgroundColor: colors.accent + "33" }]}>
+                <MaterialCommunityIcons name="robot-excited" size={18} color={colors.accent} />
+              </View>
+              <View style={[styles.bubble, styles.typingBubble, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <ActivityIndicator size="small" color={colors.accent} />
+                <Text style={[styles.typingText, { color: colors.mutedForeground }]}>{loadingMsg}</Text>
+              </View>
+            </View>
+          ) : null}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 8 }]}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons
-                name="robot-excited-outline"
-                size={64}
-                color={colors.accent + "55"}
-              />
-              <Text
-                style={[styles.emptyTitle, { color: colors.foreground }]}
-              >
-                Sultan Agent Ready
+              <MaterialCommunityIcons name="robot-excited-outline" size={64} color={colors.accent + "55"} />
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Sultan Agent Ready</Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                Code, engineering, SMM, business — sab kuch poocho
               </Text>
-              <Text
-                style={[styles.emptyText, { color: colors.mutedForeground }]}
-              >
-                Ask me anything — code, engineering, SMM, business
+              <Text style={[styles.emptyHint, { color: colors.mutedForeground, marginTop: 12 }]}>
+                💡 "Yaad rakh [baat]" — Firebase memory mein save{"
+"}
+                🔍 "/search [query]" — Web search karo
               </Text>
             </View>
           }
           showsVerticalScrollIndicator={false}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
         />
 
-        {/* Input */}
-        <View
-          style={[
-            styles.inputBar,
-            {
-              backgroundColor: colors.background,
-              borderTopColor: colors.border,
-              paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 8),
-            },
-          ]}
-        >
+        {/* Input Bar */}
+        <View style={[styles.inputBar, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + 8 }]}>
           <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: colors.card,
-                color: colors.foreground,
-                borderColor: colors.border,
-              },
-            ]}
-            placeholder="Ask Sultan Agent anything..."
-            placeholderTextColor={colors.mutedForeground}
+            style={[styles.input, {
+              backgroundColor: colors.card,
+              color: colors.foreground,
+              borderColor: colors.border,
+            }]}
             value={input}
             onChangeText={setInput}
+            placeholder={`Message Sultan Agent...`}
+            placeholderTextColor={colors.mutedForeground}
             multiline
-            onSubmitEditing={handleSend}
-            blurOnSubmit={false}
+            maxLength={4000}
+            onSubmitEditing={Platform.OS === "web" ? handleSend : undefined}
+            blurOnSubmit={Platform.OS === "web"}
           />
           <Pressable
             onPress={handleSend}
             disabled={loading || !input.trim()}
-            style={[
-              styles.sendBtn,
-              {
-                backgroundColor:
-                  loading || !input.trim()
-                    ? colors.muted
-                    : colors.primary,
-              },
-            ]}
+            style={[styles.sendBtn, {
+              backgroundColor: (loading || !input.trim()) ? colors.border : colors.primary,
+            }]}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.background} />
-            ) : (
-              <Ionicons
-                name="arrow-up"
-                size={20}
-                color={
-                  loading || !input.trim()
-                    ? colors.mutedForeground
-                    : colors.primaryForeground
-                }
-              />
-            )}
+            <Ionicons name="send" size={18} color={colors.primaryForeground} />
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -345,93 +307,30 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  headerTitle: {
-    fontSize: 18,
-    fontFamily: "Inter_700Bold",
-  },
+  headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  modelRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  providerDot: { width: 6, height: 6, borderRadius: 3 },
+  fbDot: { width: 6, height: 6, borderRadius: 3, marginLeft: 4 },
   headerSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  clearBtn: { padding: 8 },
-  listContent: { padding: 16, gap: 12, flexGrow: 1 },
-  bubbleRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 8,
-    marginBottom: 4,
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bubble: {
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  typingBubble: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
+  headerActions: { flexDirection: "row", gap: 8 },
+  iconBtn: { padding: 8 },
+  listContent: { paddingHorizontal: 12, paddingTop: 12, gap: 8 },
+  bubbleRow: { flexDirection: "row", alignItems: "flex-end", gap: 8, marginBottom: 8 },
+  avatar: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, borderWidth: StyleSheet.hairlineWidth },
+  typingBubble: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12 },
   typingText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   bubbleText: { fontSize: 15, fontFamily: "Inter_400Regular", lineHeight: 22 },
-  timeText: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    marginTop: 3,
-    marginHorizontal: 4,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    paddingVertical: 80,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
-  },
-  emptyText: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-    paddingHorizontal: 40,
-  },
-  inputBar: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    padding: 12,
-    gap: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  input: {
-    flex: 1,
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 15,
-    fontFamily: "Inter_400Regular",
-    maxHeight: 120,
-  },
-  sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  timeText: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 4, marginHorizontal: 4 },
+  emptyState: { alignItems: "center", paddingTop: 80, gap: 10 },
+  emptyTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 40 },
+  emptyHint: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 32, lineHeight: 22 },
+  inputBar: { flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 12, paddingTop: 8, gap: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  input: { flex: 1, borderRadius: 20, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, fontFamily: "Inter_400Regular", maxHeight: 120 },
+  sendBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
 });
