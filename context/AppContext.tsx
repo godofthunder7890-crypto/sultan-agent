@@ -41,6 +41,10 @@ export type Settings = {
   githubOwner: string;
   githubRepo: string;
   userName: string;
+  groqKey: string;
+  elevenlabsApiKey: string;
+  elevenlabsVoiceId: string;
+  jarvixPersonality: string;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -49,6 +53,10 @@ const DEFAULT_SETTINGS: Settings = {
   githubOwner: "",
   githubRepo: "sultan-agent",
   userName: "Sultan",
+  groqKey: "",
+  elevenlabsApiKey: "",
+  elevenlabsVoiceId: "21m00Tcm4TlvDq8ikWAM",
+  jarvixPersonality: "JARVIS",
 };
 
 const MODELS = [
