@@ -18,34 +18,67 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Notify Telegram — Build Shuru
+      # ── 0% ── Build shuru ──────────────────────────────────────
+      - name: Telegram — 0% Build Shuru
         continue-on-error: true
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           SHA7="${GITHUB_SHA::7}"
+          MSG="╔══════════════════════╗
+║  🤖 SULTAN AGENT BUILD  ║
+╚══════════════════════╝
+
+📦 Commit: `${SHA7}`
+🕐 $(date '+%H:%M:%S') — Build shuru hua!
+
+Progress:
+▓░░░░░░░░░ 10% — Checkout ✅"
           curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${CHAT_ID}" \
-            -d "text=🚀 Sultan Agent APK Build Shuru!%0ACommit: ${SHA7}%0A⏳ Step 1/4: Dependencies install ho rahi hain..." || true
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=${MSG}" \
+            --data-urlencode "parse_mode=Markdown" || true
 
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: "24"
 
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Notify Telegram — Dependencies Done
+      # ── 20% ── Dependencies ────────────────────────────────────
+      - name: Telegram — 20% Installing
         continue-on-error: true
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          MSG="⚙️ *Dependencies install ho rahi hain...*
+
+▓▓░░░░░░░░ 20% — npm install
+⏳ Thoda wait karo..."
           curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${CHAT_ID}" \
-            -d "text=✅ Step 1/4 Done: Dependencies install ho gayi!%0A⏳ Step 2/4: EAS CLI setup ho raha hai..." || true
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=${MSG}" \
+            --data-urlencode "parse_mode=Markdown" || true
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      # ── 40% ── EAS Setup ───────────────────────────────────────
+      - name: Telegram — 40% Deps Done
+        continue-on-error: true
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="✅ *Dependencies ready!*
+
+▓▓▓▓░░░░░░ 40% — EAS CLI setup ho raha hai...
+🔧 Expo build tools load ho rahe hain"
+          curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=${MSG}" \
+            --data-urlencode "parse_mode=Markdown" || true
 
       - name: Setup EAS CLI
         uses: expo/expo-github-action@v8
@@ -53,15 +86,22 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Notify Telegram — EAS Ready
+      # ── 60% ── EAS Build start ─────────────────────────────────
+      - name: Telegram — 60% EAS Building
         continue-on-error: true
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          MSG="🏗️ *APK build shuru — Expo servers pe!*
+
+▓▓▓▓▓▓░░░░ 60% — Building...
+☁️ Expo cloud compile kar raha hai
+⏳ ~10-15 min aur lagenge, raho ready!"
           curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${CHAT_ID}" \
-            -d "text=✅ Step 2/4 Done: EAS CLI ready!%0A⏳ Step 3/4: APK build ho raha hai Expo servers pe...%0A⏳ Yeh ~15-20 min lagta hai, ruko!" || true
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=${MSG}" \
+            --data-urlencode "parse_mode=Markdown" || true
 
       - name: Build APK via EAS
         id: eas_build
@@ -70,14 +110,19 @@ jobs:
           EAS_NO_VCS: "1"
         run: |
           set +e
-          echo "Starting EAS build..."
-          eas build --platform android --profile production --non-interactive --wait
-          EAS_EXIT=$?
-          echo "EAS exit: ${EAS_EXIT}"
+          eas build --platform android --profile production --non-interactive --wait 2>&1 | tee /tmp/eas_output.txt
+          EAS_EXIT=${PIPESTATUS[0]}
 
-          echo "Fetching build list..."
+          # Check for free plan limit error
+          if grep -q "used its Android builds from the Free plan" /tmp/eas_output.txt; then
+            RESET_DATE=$(grep -o "Mon [A-Za-z]* [0-9]* [0-9]*" /tmp/eas_output.txt | head -1 || echo "1 June 2026")
+            echo "eas_limit=true" >> $GITHUB_OUTPUT
+            echo "reset_date=${RESET_DATE}" >> $GITHUB_OUTPUT
+            echo "build_status=limit" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           BUILD_JSON=$(eas build:list --platform android --limit 1 --non-interactive --json 2>&1 || echo "[]")
-
           APK_URL=$(echo "${BUILD_JSON}" | node -e "
             let d=''; process.stdin.on('data',c=>d+=c);
             process.stdin.on('end',()=>{
@@ -85,19 +130,61 @@ jobs:
                 const arr = JSON.parse(d);
                 const b = Array.isArray(arr) ? arr[0] : arr;
                 const url = b?.artifacts?.buildUrl || b?.artifact?.url || '';
-                console.log(url);
+                console.log(url.trim());
               } catch(e) { console.log(''); }
             });
           " 2>/dev/null || echo "")
 
           echo "apk_url=${APK_URL}" >> $GITHUB_OUTPUT
-
           if [ -n "${APK_URL}" ]; then
             echo "build_status=success" >> $GITHUB_OUTPUT
           else
             echo "build_status=failed" >> $GITHUB_OUTPUT
           fi
 
+      # ── Free plan limit hit ────────────────────────────────────
+      - name: Telegram — EAS Free Plan Limit
+        if: steps.eas_build.outputs.build_status == 'limit'
+        continue-on-error: true
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="⚠️ *Expo Free Plan Limit!*
+
+▓▓▓▓▓▓░░░░ 60% — Ruk gaya
+
+❌ Is mahine ke Android builds khatam ho gaye!
+🔄 Reset hoga: *1 June 2026* pe
+
+2 options hain:
+1️⃣ expo.dev/accounts/blcobra858/settings/billing pe plan upgrade karo
+2️⃣ 18 din baad automatically reset hoga
+
+Code bilkul theek hai — sirf build quota issue hai 💪"
+          curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=${MSG}" \
+            --data-urlencode "parse_mode=Markdown" || true
+
+      # ── 90% ── APK ready, bhej raha hoon ──────────────────────
+      - name: Telegram — 90% Sending APK
+        if: steps.eas_build.outputs.build_status == 'success'
+        continue-on-error: true
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="🎯 *APK build complete!*
+
+▓▓▓▓▓▓▓▓▓░ 90% — Telegram pe bhej raha hoon...
+📲 Bas ek minute aur!"
+          curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=${MSG}" \
+            --data-urlencode "parse_mode=Markdown" || true
+
+      # ── 100% ── APK send ───────────────────────────────────────
       - name: Send APK to Telegram
         if: steps.eas_build.outputs.build_status == 'success'
         continue-on-error: true
@@ -108,40 +195,57 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           SHA7="${GITHUB_SHA::7}"
-
-          # Notify build done
-          curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${CHAT_ID}" \
-            -d "text=✅ Step 3/4 Done: APK build complete!%0A⏳ Step 4/4: APK Telegram pe bhej raha hoon..." || true
-
-          # Download APK
-          echo "Downloading APK from ${APK_URL}..."
           curl -L -o sultan-agent.apk \
             -H "Authorization: Bearer ${EXPO_TOKEN}" \
             "${APK_URL}" || curl -L -o sultan-agent.apk "${APK_URL}"
 
           SIZE=$(stat -c%s sultan-agent.apk 2>/dev/null || echo 0)
           MAX=$((49*1024*1024))
+          MB=$(echo "scale=1; ${SIZE}/1048576" | bc)
 
           if [ "${SIZE}" -gt 100000 ] && [ "${SIZE}" -le "${MAX}" ]; then
             curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
               -F "chat_id=${CHAT_ID}" \
               -F "document=@sultan-agent.apk" \
-              -F "caption=🎉 Sultan Agent APK Ready!%0ACommit: ${SHA7}%0A✅ Install karo aur enjoy karo!" || true
+              -F "caption=🏆 Sultan Agent APK Ready!
+
+▓▓▓▓▓▓▓▓▓▓ 100% — DONE ✅
+
+📦 Size: ${MB} MB
+🔖 Version: Commit ${SHA7}
+🔥 Firebase + MultiAI + Memory + JARVIX
+
+Install karo aur enjoy karo! 🚀" || true
           else
             curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-              -d "chat_id=${CHAT_ID}" \
-              -d "text=🎉 APK Ready! Download karo:%0A${APK_URL}%0ACommit: ${SHA7}" || true
+              --data-urlencode "chat_id=${CHAT_ID}" \
+              --data-urlencode "text=🏆 APK Ready!
+
+▓▓▓▓▓▓▓▓▓▓ 100% ✅
+
+📥 Download: ${APK_URL}
+🔖 Commit: ${SHA7}" \
+              --data-urlencode "parse_mode=Markdown" || true
           fi
 
-      - name: Notify Telegram — Build Failed
-        if: steps.eas_build.outputs.build_status != 'success'
+      # ── Failed ────────────────────────────────────────────────
+      - name: Telegram — Build Failed
+        if: steps.eas_build.outputs.build_status == 'failed'
         continue-on-error: true
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           SHA7="${GITHUB_SHA::7}"
+          MSG="❌ *Build Fail!*
+
+░░░░░░░░░░ ERROR
+
+🔖 Commit: `${SHA7}`
+📋 Logs: expo.dev/accounts/blcobra858/projects/sultan-agent/builds
+
+Koi code issue hai — logs dekho 👆"
           curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${CHAT_ID}" \
-            -d "text=❌ Build Fail! Commit: ${SHA7}%0ALogs dekho: https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds" || true
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=${MSG}" \
+            --data-urlencode "parse_mode=Markdown" || true
