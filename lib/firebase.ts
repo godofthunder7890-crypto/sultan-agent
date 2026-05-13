@@ -10,12 +10,15 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 
+// ⚠️ SECURITY: Move apiKey to EXPO_PUBLIC_ env vars + EAS secrets for production
 const firebaseConfig = {
   apiKey: 'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
   authDomain: 'v11345.firebaseapp.com',
   projectId: 'v11345',
-  databaseURL: 'https://v11345-default-rtdb.firebaseio.com',
   storageBucket: 'v11345.firebasestorage.app',
+  // TODO: Add from Firebase Console → Project Settings:
+  // messagingSenderId: 'YOUR_SENDER_ID',
+  // appId: 'YOUR_APP_ID',
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
