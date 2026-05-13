@@ -28,15 +28,74 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Submit APK build to EAS
+        id: eas_build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_BUILD_NO_EXPO_GO_WARNING: "true"
-        run: eas build --platform android --profile production --non-interactive --no-wait
-
-      - name: Build submitted!
         run: |
-          echo "=============================="
-          echo "APK build submitted to EAS!"
-          echo "Check: https://expo.dev/accounts/suhanshaikh78957/projects/sultan-agent/builds"
-          echo "=============================="
+          OUTPUT=$(eas build --platform android --profile production --non-interactive --no-wait 2>&1)
+          echo "$OUTPUT"
+          BUILD_URL=$(echo "$OUTPUT" | grep "See logs:" | awk '{print $NF}')
+          echo "build_url=$BUILD_URL" >> $GITHUB_OUTPUT
+          echo "BUILD_URL=$BUILD_URL" >> $GITHUB_ENV
 
+      - name: Wait for EAS build to complete
+        id: wait_build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          echo "Waiting for EAS build to complete..."
+          sleep 60
+          for i in $(seq 1 20); do
+            STATUS=$(eas build:list --platform android --limit 1 --non-interactive --json 2>/dev/null | node -e "const c=[]; process.stdin.on('data',d=>c.push(d)); process.stdin.on('end',()=>{ try{ const d=JSON.parse(c.join('')); console.log(d[0]?.status || 'unknown'); }catch(e){console.log('unknown');} });")
+            echo "Build status: $STATUS (attempt $i/20)"
+            if [ "$STATUS" = "FINISHED" ]; then
+              APK_URL=$(eas build:list --platform android --limit 1 --non-interactive --json 2>/dev/null | node -e "const c=[]; process.stdin.on('data',d=>c.push(d)); process.stdin.on('end',()=>{ try{ const d=JSON.parse(c.join('')); console.log(d[0]?.artifacts?.buildUrl || ''  ); }catch(e){console.log('');} });")
+              echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
+              echo "APK_URL=$APK_URL" >> $GITHUB_ENV
+              echo "status=success" >> $GITHUB_OUTPUT
+              break
+            elif [ "$STATUS" = "ERRORED" ] || [ "$STATUS" = "CANCELED" ]; then
+              echo "status=failed" >> $GITHUB_OUTPUT
+              break
+            fi
+            sleep 60
+          done
+
+      - name: Send Telegram notification
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ "${{ steps.wait_build.outputs.status }}" = "success" ] && [ -n "${{ steps.wait_build.outputs.apk_url }}" ]; then
+            MESSAGE="Sultan Agent APK Build Successful!
+
+APK Download: ${{ steps.wait_build.outputs.apk_url }}
+
+EAS Dashboard: ${{ steps.eas_build.outputs.build_url }}
+
+Commit: ${{ github.sha }}
+Branch: ${{ github.ref_name }}
+Triggered by: ${{ github.event_name }}"
+          elif [ "${{ steps.wait_build.outputs.status }}" = "failed" ]; then
+            MESSAGE="Sultan Agent APK Build FAILED!
+
+EAS Dashboard: ${{ steps.eas_build.outputs.build_url }}
+
+Commit: ${{ github.sha }}
+Branch: ${{ github.ref_name }}"
+          else
+            MESSAGE="Sultan Agent APK Build Submitted!
+
+EAS pe build chal rahi hai (~15 min).
+Check karo: ${{ steps.eas_build.outputs.build_url }}
+
+Commit: ${{ github.sha }}
+Branch: ${{ github.ref_name }}"
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            -d "text=${MESSAGE}" \
+            -d "parse_mode=HTML"
+          echo "Telegram notification sent!"
