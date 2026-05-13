@@ -45,6 +45,8 @@ export type Settings = {
   elevenlabsApiKey: string;
   elevenlabsVoiceId: string;
   jarvixPersonality: string;
+  openaiKey: string;
+  geminiKey: string;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -57,6 +59,8 @@ const DEFAULT_SETTINGS: Settings = {
   elevenlabsApiKey: "",
   elevenlabsVoiceId: "21m00Tcm4TlvDq8ikWAM",
   jarvixPersonality: "JARVIS",
+  openaiKey: "",
+  geminiKey: "",
 };
 
 const MODELS = [
