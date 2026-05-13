@@ -28,7 +28,9 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build APK
-        run: eas build --platform android --profile production --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli build --platform android --profile production --non-interactive
 
-      - name: Build complete
-        run: echo "✅ APK build triggered! Check https://expo.dev/accounts/suhanshaikh78957/projects/sultan-agent/builds"
+      - name: Done
+        run: echo "Build submitted to EAS. Check https://expo.dev/accounts/suhanshaikh78957/projects/sultan-agent/builds"
