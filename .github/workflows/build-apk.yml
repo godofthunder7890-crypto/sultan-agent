@@ -3,16 +3,11 @@ name: Build Sultan Agent APK
 on:
   push:
     branches: [main]
-    paths:
-      - 'artifacts/sultan-agent/**'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: artifacts/sultan-agent
 
     steps:
       - name: Checkout
@@ -23,15 +18,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
-
       - name: Install dependencies
-        run: |
-          cd ../..
-          pnpm install --frozen-lockfile
+        run: npm install --legacy-peer-deps
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
@@ -40,7 +28,7 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build APK
-        run: eas build --platform android --profile production --non-interactive --no-wait
+        run: eas build --platform android --profile production --non-interactive
 
-      - name: Get build URL
-        run: echo "APK is building on EAS. Check https://expo.dev/accounts/[your-username]/projects/sultan-agent/builds"
+      - name: Build complete
+        run: echo "✅ APK build triggered! Check https://expo.dev/accounts/suhanshaikh78957/projects/sultan-agent/builds"
