@@ -1,0 +1,12 @@
+{
+  "name": "sultan-agent-bot-server",
+  "version": "1.0.0",
+  "description": "Sultan Agent — 24/7 Telegram Bot Server (Railway Deploy)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
