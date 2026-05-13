@@ -8,7 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,39 +37,20 @@ jobs:
           BUILD_URL=$(echo "$OUTPUT" | grep "See logs:" | awk '{print $NF}')
           echo "build_url=$BUILD_URL" >> $GITHUB_OUTPUT
 
-      - name: Wait for EAS build to complete
+      - name: Wait for EAS build
         id: wait_build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          echo "Waiting for EAS build..."
           sleep 120
           STATUS="unknown"
           APK_URL=""
-          for i in $(seq 1 18); do
-            JSON=$(eas build:list --platform android --limit 1 --non-interactive --json 2>/dev/null || echo "[]")
-            STATUS=$(echo "$JSON" | node -e "
-              const c=[];
-              process.stdin.on('data',d=>c.push(d));
-              process.stdin.on('end',()=>{
-                try {
-                  const d=JSON.parse(c.join(''));
-                  console.log(d[0] ? d[0].status : 'unknown');
-                } catch(e) { console.log('unknown'); }
-              });
-            ")
-            echo "Attempt $i: status=$STATUS"
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            RESULT=$(eas build:list --platform android --limit 1 --non-interactive --json 2>/dev/null || echo "[]")
+            STATUS=$(node -e "try{const d=JSON.parse(process.argv[1]);console.log(d[0]?d[0].status:'unknown')}catch(e){console.log('unknown')}" "$RESULT")
+            echo "Attempt $i - Status: $STATUS"
             if [ "$STATUS" = "FINISHED" ]; then
-              APK_URL=$(echo "$JSON" | node -e "
-                const c=[];
-                process.stdin.on('data',d=>c.push(d));
-                process.stdin.on('end',()=>{
-                  try {
-                    const d=JSON.parse(c.join(''));
-                    console.log((d[0] && d[0].artifacts && d[0].artifacts.buildUrl) ? d[0].artifacts.buildUrl : '');
-                  } catch(e) { console.log(''); }
-                });
-              ")
+              APK_URL=$(node -e "try{const d=JSON.parse(process.argv[1]);console.log((d[0]&&d[0].artifacts&&d[0].artifacts.buildUrl)?d[0].artifacts.buildUrl:'')}catch(e){console.log('')}" "$RESULT")
               echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
               echo "build_status=success" >> $GITHUB_OUTPUT
               break
@@ -89,46 +69,47 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          BUILD_URL: ${{ steps.eas_build.outputs.build_url }}
-          APK_URL: ${{ steps.wait_build.outputs.apk_url }}
-          BUILD_STATUS: ${{ steps.wait_build.outputs.build_status }}
         run: |
-          if [ "$BUILD_STATUS" = "success" ] && [ -n "$APK_URL" ]; then
-            MSG="✅ Sultan Agent APK Ready!
+          BUILD_URL="${{ steps.eas_build.outputs.build_url }}"
+          APK_URL="${{ steps.wait_build.outputs.apk_url }}"
+          BUILD_STATUS="${{ steps.wait_build.outputs.build_status }}"
+          SHORT_SHA="${GITHUB_SHA::7}"
 
-📦 APK Download:
+          if [ "$BUILD_STATUS" = "success" ] && [ -n "$APK_URL" ]; then
+            MSG="Sultan Agent APK Ready!
+
+APK Download Link:
 $APK_URL
 
-🔗 EAS Dashboard:
+EAS Dashboard:
 $BUILD_URL
 
-📝 Commit: ${GITHUB_SHA::7}
-🌿 Branch: $GITHUB_REF_NAME"
+Commit: $SHORT_SHA | Branch: $GITHUB_REF_NAME"
+
           elif [ "$BUILD_STATUS" = "failed" ]; then
-            MSG="❌ Sultan Agent APK Build FAILED!
+            MSG="Sultan Agent APK Build FAILED!
 
-🔗 EAS Dashboard:
+EAS Dashboard:
 $BUILD_URL
 
-📝 Commit: ${GITHUB_SHA::7}
-🌿 Branch: $GITHUB_REF_NAME"
+Commit: $SHORT_SHA | Branch: $GITHUB_REF_NAME"
+
           else
-            MSG="🚀 Sultan Agent APK Build Submitted!
+            MSG="Sultan Agent APK Build Submitted!
 
-⏳ EAS pe build chal rahi hai (~15 min)
-Thodi der baad check karo:
+EAS pe build chal rahi hai (~15 min).
+Check karo:
 $BUILD_URL
 
-📝 Commit: ${GITHUB_SHA::7}
-🌿 Branch: $GITHUB_REF_NAME"
+Commit: $SHORT_SHA | Branch: $GITHUB_REF_NAME"
           fi
+
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=${MSG}" \
-            -d "parse_mode=HTML"
+            -F "chat_id=${TELEGRAM_CHAT_ID}" \
+            -F "text=${MSG}"
           echo "Telegram notification sent!"
 
-      - name: Done
+      - name: Build submitted!
         run: |
           echo "=============================="
           echo "APK build submitted to EAS!"
