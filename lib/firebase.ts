@@ -29,6 +29,7 @@ export const COL = {
   ORDERS: `users/${USER_ID}/orders`,
   SETTINGS: `users/${USER_ID}/settings`,
   MEMORY: `users/${USER_ID}/memory`,
+  TELEGRAM: `users/${USER_ID}/telegram`,
 } as const;
 
 export async function fsSet(col: string, id: string, data: Record<string, unknown>): Promise<boolean> {
