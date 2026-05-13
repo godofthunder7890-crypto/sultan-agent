@@ -70,14 +70,20 @@ function useOrbAnimation(voiceState: VoiceState, color: string) {
   const opacity1 = useRef(new Animated.Value(0.15)).current;
   const opacity2 = useRef(new Animated.Value(0.08)).current;
   const rotate = useRef(new Animated.Value(0)).current;
-  const pulse = useRef<Animated.CompositeAnimation | null>(null);
+  const animations = useRef<Animated.CompositeAnimation[]>([]);
 
   useEffect(() => {
-    if (pulse.current) pulse.current.stop();
+    // Stop all running animations before starting new ones
+    animations.current.forEach((a) => a.stop());
+    animations.current = [];
+
+    const run = (...anims: Animated.CompositeAnimation[]) => {
+      anims.forEach((a) => { animations.current.push(a); a.start(); });
+    };
 
     if (voiceState === "idle") {
-      Animated.loop(
-        Animated.sequence([
+      run(
+        Animated.loop(Animated.sequence([
           Animated.parallel([
             Animated.timing(scale1, { toValue: 1.08, duration: 2200, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
             Animated.timing(opacity1, { toValue: 0.2, duration: 2200, useNativeDriver: true }),
@@ -86,17 +92,15 @@ function useOrbAnimation(voiceState: VoiceState, color: string) {
             Animated.timing(scale1, { toValue: 1, duration: 2200, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
             Animated.timing(opacity1, { toValue: 0.12, duration: 2200, useNativeDriver: true }),
           ]),
-        ])
-      ).start();
-      Animated.loop(
-        Animated.sequence([
+        ])),
+        Animated.loop(Animated.sequence([
           Animated.timing(scale2, { toValue: 1.18, duration: 3000, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
           Animated.timing(scale2, { toValue: 1, duration: 3000, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
-        ])
-      ).start();
+        ]))
+      );
     } else if (voiceState === "listening") {
-      Animated.loop(
-        Animated.sequence([
+      run(
+        Animated.loop(Animated.sequence([
           Animated.parallel([
             Animated.timing(scale1, { toValue: 1.2, duration: 700, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
             Animated.timing(opacity1, { toValue: 0.45, duration: 700, useNativeDriver: true }),
@@ -105,33 +109,27 @@ function useOrbAnimation(voiceState: VoiceState, color: string) {
             Animated.timing(scale1, { toValue: 1.05, duration: 700, useNativeDriver: true, easing: Easing.in(Easing.ease) }),
             Animated.timing(opacity1, { toValue: 0.2, duration: 700, useNativeDriver: true }),
           ]),
-        ])
-      ).start();
-      Animated.loop(
-        Animated.sequence([
+        ])),
+        Animated.loop(Animated.sequence([
           Animated.timing(scale2, { toValue: 1.4, duration: 1000, useNativeDriver: true }),
           Animated.timing(scale2, { toValue: 1.1, duration: 1000, useNativeDriver: true }),
-        ])
-      ).start();
-      Animated.loop(
-        Animated.sequence([
+        ])),
+        Animated.loop(Animated.sequence([
           Animated.timing(scale3, { toValue: 1.6, duration: 1400, useNativeDriver: true }),
           Animated.timing(scale3, { toValue: 1, duration: 1400, useNativeDriver: true }),
-        ])
-      ).start();
+        ]))
+      );
     } else if (voiceState === "thinking") {
-      Animated.loop(
-        Animated.timing(rotate, { toValue: 1, duration: 3000, useNativeDriver: true, easing: Easing.linear })
-      ).start();
-      Animated.loop(
-        Animated.sequence([
+      run(
+        Animated.loop(Animated.timing(rotate, { toValue: 1, duration: 3000, useNativeDriver: true, easing: Easing.linear })),
+        Animated.loop(Animated.sequence([
           Animated.timing(scale1, { toValue: 1.12, duration: 1000, useNativeDriver: true }),
           Animated.timing(scale1, { toValue: 0.95, duration: 1000, useNativeDriver: true }),
-        ])
-      ).start();
+        ]))
+      );
     } else if (voiceState === "speaking") {
-      Animated.loop(
-        Animated.sequence([
+      run(
+        Animated.loop(Animated.sequence([
           Animated.parallel([
             Animated.timing(scale1, { toValue: 1.15, duration: 400, useNativeDriver: true }),
             Animated.timing(opacity1, { toValue: 0.5, duration: 400, useNativeDriver: true }),
@@ -140,21 +138,19 @@ function useOrbAnimation(voiceState: VoiceState, color: string) {
             Animated.timing(scale1, { toValue: 1.05, duration: 400, useNativeDriver: true }),
             Animated.timing(opacity1, { toValue: 0.25, duration: 400, useNativeDriver: true }),
           ]),
-        ])
-      ).start();
-      Animated.loop(
-        Animated.sequence([
+        ])),
+        Animated.loop(Animated.sequence([
           Animated.timing(scale2, { toValue: 1.5, duration: 600, useNativeDriver: true }),
           Animated.timing(scale2, { toValue: 1.1, duration: 600, useNativeDriver: true }),
-        ])
-      ).start();
-      Animated.loop(
-        Animated.sequence([
+        ])),
+        Animated.loop(Animated.sequence([
           Animated.timing(scale3, { toValue: 1.9, duration: 900, useNativeDriver: true }),
           Animated.timing(scale3, { toValue: 1, duration: 900, useNativeDriver: true }),
-        ])
-      ).start();
+        ]))
+      );
     }
+
+    return () => { animations.current.forEach((a) => a.stop()); animations.current = []; };
   }, [voiceState]);
 
   const spin = rotate.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
@@ -259,11 +255,16 @@ export default function JarvixScreen() {
   const orb = useOrbAnimation(voiceState, p.color);
 
   useEffect(() => {
-    Audio.requestPermissionsAsync();
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
-    });
+    (async () => {
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== "granted") {
+        setError("Microphone permission nahi mili. Phone Settings mein allow karo.");
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      }).catch(() => {});
+    })();
     return () => {
       recordingRef.current?.stopAndUnloadAsync().catch(() => {});
       soundRef.current?.unloadAsync().catch(() => {});
@@ -285,6 +286,13 @@ export default function JarvixScreen() {
   async function startRecording() {
     try {
       setError("");
+
+      const groqKey = settings.groqKey || GROQ_API_KEY_DEFAULT;
+      if (!groqKey) {
+        setError("Groq API Key nahi hai. Settings mein add karo.");
+        return;
+      }
+
       if (soundRef.current) {
         await soundRef.current.stopAsync().catch(() => {});
         await soundRef.current.unloadAsync().catch(() => {});
