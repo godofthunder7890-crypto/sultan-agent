@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/context/AppContext";
 
-const GROQ_API_KEY_DEFAULT = process.env.EXPO_PUBLIC_GROQ_API_KEY ?? "";
+const GROQ_API_KEY_DEFAULT = ""; // Use Settings tab to enter Groq API key
 
 const PERSONALITIES = {
   JARVIS: {
