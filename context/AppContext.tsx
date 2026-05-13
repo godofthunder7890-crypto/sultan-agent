@@ -100,6 +100,36 @@ function genId() {
   return Date.now().toString() + Math.random().toString(36).substr(2, 9);
 }
 
+// React Native mein reliable base64 encoding
+function safeBase64Encode(str: string): string {
+  try {
+    // Buffer is available in React Native via polyfill
+    return Buffer.from(str, 'utf8').toString('base64');
+  } catch {
+    // Fallback: manual encoding
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const bytes = [];
+    for (let i = 0; i < str.length; i++) {
+      const code = str.charCodeAt(i);
+      if (code < 128) {
+        bytes.push(code);
+      } else if (code < 2048) {
+        bytes.push((code >> 6) | 192, (code & 63) | 128);
+      } else {
+        bytes.push((code >> 12) | 224, ((code >> 6) & 63) | 128, (code & 63) | 128);
+      }
+    }
+    let result = '';
+    for (let i = 0; i < bytes.length; i += 3) {
+      const a = bytes[i], b = bytes[i+1] ?? 0, c = bytes[i+2] ?? 0;
+      result += chars[a >> 2] + chars[((a & 3) << 4) | (b >> 4)] +
+        (i+1 < bytes.length ? chars[((b & 15) << 2) | (c >> 6)] : '=') +
+        (i+2 < bytes.length ? chars[c & 63] : '=');
+    }
+    return result;
+  }
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -235,24 +265,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async (data: object, filePath: string): Promise<boolean> => {
       if (!settings.githubToken || !settings.githubOwner) return false;
       try {
-        const content = btoa(
-          unescape(encodeURIComponent(JSON.stringify(data, null, 2)))
-        );
+        const jsonStr = JSON.stringify(data, null, 2);
+        const content = safeBase64Encode(jsonStr);
         const url = `https://api.github.com/repos/${settings.githubOwner}/${settings.githubRepo}/contents/${filePath}`;
         const existing = await fetch(url, {
-          headers: { Authorization: `Bearer ${settings.githubToken}` },
+          headers: { Authorization: `Bearer ${settings.githubToken}`, 'User-Agent': 'Sultan-Agent' },
         }).then((r) => r.json());
+        const body: Record<string, string> = {
+          message: `Update ${filePath} - ${new Date().toLocaleString()}`,
+          content,
+        };
+        if (existing.sha) body.sha = existing.sha;
         await fetch(url, {
           method: "PUT",
           headers: {
             Authorization: `Bearer ${settings.githubToken}`,
             "Content-Type": "application/json",
+            'User-Agent': 'Sultan-Agent',
           },
-          body: JSON.stringify({
-            message: `Update ${filePath} - ${new Date().toLocaleString()}`,
-            content,
-            sha: existing.sha,
-          }),
+          body: JSON.stringify(body),
         });
         return true;
       } catch {
