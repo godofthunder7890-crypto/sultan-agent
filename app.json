@@ -2,6 +2,7 @@
   "expo": {
     "name": "Sultan Agent",
     "slug": "sultan-agent",
+    "owner": "suhanshaikh78957",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -67,6 +68,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1bd4abf0-bbef-47c9-a6b0-cb72f58a243c"
+      }
     }
   }
 }
