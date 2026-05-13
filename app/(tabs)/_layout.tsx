@@ -5,11 +5,11 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
 
-function JarvixTabIcon({ color, focused }: { color: string; size: number; focused: boolean }) {
+function JarvixTabIcon({ color, size, focused }: { color: string; size: number; focused: boolean }) {
   return (
     <View style={{ alignItems: "center", justifyContent: "center" }}>
-      <Text style={{ fontSize: 16, color, fontFamily: "Inter_700Bold", letterSpacing: 2, opacity: focused ? 1 : 0.7 }}>
-        J<Text style={{ color: focused ? color : color }}>X</Text>
+      <Text style={{ fontSize: size ?? 16, color, fontFamily: "Inter_700Bold", letterSpacing: 2, opacity: focused ? 1 : 0.7 }}>
+        J<Text style={{ color }}>X</Text>
       </Text>
     </View>
   );
