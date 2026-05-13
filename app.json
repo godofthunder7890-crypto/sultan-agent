@@ -3,7 +3,7 @@
     "name": "Sultan Agent",
     "slug": "sultan-agent",
     "owner": "blcobra858",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "sultan-agent",
@@ -24,7 +24,6 @@
     },
     "android": {
       "package": "com.sultan.agent",
-      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.INTERNET",
