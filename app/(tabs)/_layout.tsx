@@ -72,6 +72,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="telegram"
+        options={{
+          title: "Telegram",
+          tabBarActiveTintColor: "#2AABEE",
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="send-circle-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
