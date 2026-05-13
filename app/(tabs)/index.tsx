@@ -37,7 +37,8 @@ function MessageBubble({ msg }: { msg: Message }) {
   const colors = useColors();
   const isUser = msg.role === "user";
   const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const provider = msg.model ? getProvider(msg.model.split("-").slice(0, 3).join("-")) : "groq";
+  // Fix: pass full model name to getProvider (no slicing that breaks Gemini 2.0 Flash)
+  const provider = msg.model ? getProvider(msg.model) : "groq";
   const providerColor = provider === "openai" ? "#10A37F" : provider === "gemini" ? "#4285F4" : "#F97316";
 
   return (
@@ -82,15 +83,12 @@ function TypingIndicator() {
   );
 }
 
-// Parse commands from user input
 function parseCommand(text: string): { type: 'memory' | 'search' | 'normal'; value: string } {
   const lower = text.toLowerCase().trim();
-  // Memory commands: "yaad rakh ...", "remember ...", "save ..."
   const memPrefixes = ["yaad rakh ", "remember ", "save this: ", "note karo "];
   for (const p of memPrefixes) {
     if (lower.startsWith(p)) return { type: 'memory', value: text.slice(p.length).trim() };
   }
-  // Search commands: "/search ...", "search karo ..."
   if (lower.startsWith("/search ")) return { type: 'search', value: text.slice(8).trim() };
   if (lower.startsWith("search karo ")) return { type: 'search', value: text.slice(12).trim() };
   return { type: 'normal', value: text };
@@ -120,7 +118,6 @@ export default function ChatScreen() {
 
     const cmd = parseCommand(text);
 
-    // ── Memory command ──────────────────────────────
     if (cmd.type === 'memory') {
       addMessage({ role: "user", content: text });
       setLoading(true);
@@ -135,7 +132,6 @@ export default function ChatScreen() {
       return;
     }
 
-    // ── Web Search command ──────────────────────────
     if (cmd.type === 'search') {
       addMessage({ role: "user", content: text });
       setLoading(true);
@@ -157,7 +153,6 @@ export default function ChatScreen() {
       return;
     }
 
-    // ── Normal AI chat ──────────────────────────────
     const activeKey = provider === "OpenAI" ? settings.openaiKey
       : provider === "Gemini" ? settings.geminiKey
       : settings.groqKey;
@@ -207,7 +202,6 @@ export default function ChatScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, {
         paddingTop: insets.top + (Platform.OS === "web" ? 67 : 12),
         backgroundColor: colors.background,
@@ -235,7 +229,6 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      {/* Messages */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <FlatList
           ref={flatRef}
@@ -263,16 +256,15 @@ export default function ChatScreen() {
                 Code, engineering, SMM, business — sab kuch poocho
               </Text>
               <Text style={[styles.emptyHint, { color: colors.mutedForeground, marginTop: 12 }]}>
-                💡 "Yaad rakh [baat]" — Firebase memory mein save{"
+                {"💡"} "Yaad rakh [baat]" — Firebase memory mein save{"
 "}
-                🔍 "/search [query]" — Web search karo
+                {"🔍"} "/search [query]" — Web search karo
               </Text>
             </View>
           }
           showsVerticalScrollIndicator={false}
         />
 
-        {/* Input Bar */}
         <View style={[styles.inputBar, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + 8 }]}>
           <TextInput
             style={[styles.input, {
