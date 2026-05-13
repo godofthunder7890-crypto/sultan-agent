@@ -47,6 +47,9 @@ export type Settings = {
   jarvixPersonality: string;
   openaiKey: string;
   geminiKey: string;
+  telegramBotToken: string;
+  telegramChatId: string;
+  telegramAiReply: boolean;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -61,6 +64,9 @@ const DEFAULT_SETTINGS: Settings = {
   jarvixPersonality: "JARVIS",
   openaiKey: "",
   geminiKey: "",
+  telegramBotToken: "",
+  telegramChatId: "",
+  telegramAiReply: false,
 };
 
 const MODELS = [
