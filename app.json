@@ -18,8 +18,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.sultan.agent",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "JARVIX needs mic access for live voice conversations.",
-        "NSSpeechRecognitionUsageDescription": "JARVIX uses your voice to talk with AI."
+        "NSMicrophoneUsageDescription": "Sultan Agent needs mic for voice.",
+        "NSSpeechRecognitionUsageDescription": "Sultan Agent uses voice to talk with AI."
       }
     },
     "android": {
@@ -46,7 +46,7 @@
       [
         "expo-av",
         {
-          "microphonePermission": "JARVIX needs microphone access for voice conversations."
+          "microphonePermission": "Sultan Agent needs microphone for voice conversations."
         }
       ],
       [
@@ -56,7 +56,8 @@
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
             "minSdkVersion": 24,
-            "kotlinVersion": "1.9.24"
+            "kotlinVersion": "1.9.24",
+            "javaVersion": "17"
           }
         }
       ]
