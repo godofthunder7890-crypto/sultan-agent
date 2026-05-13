@@ -18,7 +18,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Notify Telegram — Build Started
+      - name: Notify Telegram — Build Shuru
         continue-on-error: true
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -27,21 +27,41 @@ jobs:
           SHA7="${GITHUB_SHA::7}"
           curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             -d "chat_id=${CHAT_ID}" \
-            -d "text=Build shuru! Commit: ${SHA7} | ~15-20 min mein APK ready" || echo "Telegram skipped"
+            -d "text=🚀 Sultan Agent APK Build Shuru!%0ACommit: ${SHA7}%0A⏳ Step 1/4: Dependencies install ho rahi hain..." || true
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
+
+      - name: Notify Telegram — Dependencies Done
+        continue-on-error: true
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=✅ Step 1/4 Done: Dependencies install ho gayi!%0A⏳ Step 2/4: EAS CLI setup ho raha hai..." || true
 
       - name: Setup EAS CLI
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Notify Telegram — EAS Ready
+        continue-on-error: true
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=✅ Step 2/4 Done: EAS CLI ready!%0A⏳ Step 3/4: APK build ho raha hai Expo servers pe...%0A⏳ Yeh ~15-20 min lagta hai, ruko!" || true
 
       - name: Build APK via EAS
         id: eas_build
@@ -50,7 +70,6 @@ jobs:
           EAS_NO_VCS: "1"
         run: |
           set +e
-
           echo "Starting EAS build..."
           eas build --platform android --profile production --non-interactive --wait
           EAS_EXIT=$?
@@ -58,7 +77,6 @@ jobs:
 
           echo "Fetching build list..."
           BUILD_JSON=$(eas build:list --platform android --limit 1 --non-interactive --json 2>&1 || echo "[]")
-          echo "Raw build list: ${BUILD_JSON}"
 
           APK_URL=$(echo "${BUILD_JSON}" | node -e "
             let d=''; process.stdin.on('data',c=>d+=c);
@@ -72,12 +90,9 @@ jobs:
             });
           " 2>/dev/null || echo "")
 
-          echo "APK URL found: ${APK_URL}"
           echo "apk_url=${APK_URL}" >> $GITHUB_OUTPUT
 
-          if [ ${EAS_EXIT} -eq 0 ] && [ -n "${APK_URL}" ]; then
-            echo "build_status=success" >> $GITHUB_OUTPUT
-          elif [ -n "${APK_URL}" ]; then
+          if [ -n "${APK_URL}" ]; then
             echo "build_status=success" >> $GITHUB_OUTPUT
           else
             echo "build_status=failed" >> $GITHUB_OUTPUT
@@ -93,24 +108,30 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           SHA7="${GITHUB_SHA::7}"
+
+          # Notify build done
+          curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=✅ Step 3/4 Done: APK build complete!%0A⏳ Step 4/4: APK Telegram pe bhej raha hoon..." || true
+
+          # Download APK
           echo "Downloading APK from ${APK_URL}..."
           curl -L -o sultan-agent.apk \
             -H "Authorization: Bearer ${EXPO_TOKEN}" \
-            "${APK_URL}" || { echo "Direct download failed, trying without auth..."; curl -L -o sultan-agent.apk "${APK_URL}"; }
+            "${APK_URL}" || curl -L -o sultan-agent.apk "${APK_URL}"
 
           SIZE=$(stat -c%s sultan-agent.apk 2>/dev/null || echo 0)
-          echo "APK size: ${SIZE} bytes"
           MAX=$((49*1024*1024))
 
           if [ "${SIZE}" -gt 100000 ] && [ "${SIZE}" -le "${MAX}" ]; then
             curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
               -F "chat_id=${CHAT_ID}" \
               -F "document=@sultan-agent.apk" \
-              -F "caption=Sultan Agent v1.1 APK! Commit: ${SHA7} | Firebase+MultiAI+Memory" || echo "Telegram send skipped"
+              -F "caption=🎉 Sultan Agent APK Ready!%0ACommit: ${SHA7}%0A✅ Install karo aur enjoy karo!" || true
           else
             curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
               -d "chat_id=${CHAT_ID}" \
-              -d "text=APK ready! ${APK_URL} | Commit: ${SHA7}" || echo "Telegram skipped"
+              -d "text=🎉 APK Ready! Download karo:%0A${APK_URL}%0ACommit: ${SHA7}" || true
           fi
 
       - name: Notify Telegram — Build Failed
@@ -123,4 +144,4 @@ jobs:
           SHA7="${GITHUB_SHA::7}"
           curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             -d "chat_id=${CHAT_ID}" \
-            -d "text=Build fail! Commit: ${SHA7} | EAS logs: https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds" || echo "Skipped"
+            -d "text=❌ Build Fail! Commit: ${SHA7}%0ALogs dekho: https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds" || true
