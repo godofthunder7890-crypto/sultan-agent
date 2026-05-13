@@ -1,9 +1,19 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
+
+function JarvixTabIcon({ color, focused }: { color: string; size: number; focused: boolean }) {
+  return (
+    <View style={{ alignItems: "center", justifyContent: "center" }}>
+      <Text style={{ fontSize: 16, color, fontFamily: "Inter_700Bold", letterSpacing: 2, opacity: focused ? 1 : 0.7 }}>
+        J<Text style={{ color: focused ? color : color }}>X</Text>
+      </Text>
+    </View>
+  );
+}
 
 export default function TabLayout() {
   const colors = useColors();
@@ -33,6 +43,14 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="robot-excited" size={size} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="jarvix"
+        options={{
+          title: "JARVIX",
+          tabBarActiveTintColor: "#38BDF8",
+          tabBarIcon: (props) => <JarvixTabIcon {...props} />,
         }}
       />
       <Tabs.Screen
