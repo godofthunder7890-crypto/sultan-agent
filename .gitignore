@@ -1,0 +1,32 @@
+# Node
+node_modules/
+.expo/
+dist/
+build/
+
+# Replit workspace files — kabhi commit mat karo
+artifacts/
+lib/
+scripts/
+.local/
+.replit
+replit.nix
+pnpm-workspace.yaml
+pnpm-lock.yaml
+tsconfig.json
+tsconfig.base.json
+
+# Env
+.env
+.env.local
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+
+# EAS
+.eas/
