@@ -12,6 +12,7 @@ import {
 
 const firebaseConfig = {
   apiKey: 'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
+  authDomain: 'v11345.firebaseapp.com',
   projectId: 'v11345',
   databaseURL: 'https://v11345-default-rtdb.firebaseio.com',
   storageBucket: 'v11345.firebasestorage.app',
