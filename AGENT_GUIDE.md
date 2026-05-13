@@ -12,13 +12,13 @@ GitHub Repo: `godofthunder7890-crypto/sultan-agent`
 |---------|---------|-------|
 | GitHub | godofthunder7890-crypto | Repo owner |
 | Expo / EAS | blcobra858 (xhhk891@gmail.com) | Build account |
-| Telegram Bot | @Sultan_Overlord_Bot | Notifications |
+| Telegram Bot | @Sultan_Overlord_Bot | APK notifications |
 
-## Secrets (Already set in GitHub repo + Replit)
+## Secrets (Already set in both GitHub repo AND Replit)
 - `EXPO_TOKEN` — blcobra858 account ka EAS token
 - `TELEGRAM_BOT_TOKEN` — Sultan_Overlord_Bot ka token
 - `TELEGRAM_CHAT_ID` — User ka personal chat ID
-- `GITHUB_ACCESS_TOKEN` — GitHub personal access token (Replit secret only)
+- `GITHUB_ACCESS_TOKEN` — GitHub PAT (Replit secret only, NOT in repo)
 
 ---
 
@@ -34,100 +34,122 @@ GitHub Repo: `godofthunder7890-crypto/sultan-agent`
 ## GitHub Actions Workflow
 
 File: `.github/workflows/build-apk.yml`
+Triggers on: every push to `main` branch + manual `workflow_dispatch`
 
 **Kya karta hai:**
-1. Har `main` branch push pe automatically trigger hota hai
-2. EAS pe Android APK build submit karta hai (production profile, internal distribution)
-3. Build complete hone ka wait karta hai (20 attempts x 60s = max 20 min)
-4. APK ready hone pe **seedha Telegram pe APK file bhejta hai** (< 49MB)
-5. Agar APK badi ho (> 49MB) toh download link bhejta hai
-6. Build fail hone pe failure message Telegram pe bhejta hai
-
-**Telegram notifications:**
-- Success: APK file directly send hoti hai via `sendDocument`
-- Failure: Error message + EAS dashboard link
+1. EAS pe Android APK build submit karta hai (production profile)
+2. Build FINISH hone ka wait karta hai (max 20 min)
+3. APK ready hone pe **seedha Telegram pe APK file bhejta hai** (`sendDocument`)
+4. Agar APK > 49MB ho toh download link bhejta hai
+5. Build fail pe Telegram pe failure message bhejta hai
 
 ---
 
-## Key Files in Repo
+## Fixes Applied (History)
+
+| Fix | File | Reason |
+|-----|------|--------|
+| EAS account changed to blcobra858 | app.json | Old account ka access nahi tha |
+| New projectId set | app.json | New EAS project create kiya |
+| Node 20.19.4 specified | eas.json | EBADENGINE error (required >=20.19.4) |
+| assets/images/icon.png added | assets/images/ | Prebuild fail ho raha tha (file missing) |
+| Telegram APK direct send | workflow | User ne link ki jagah APK maanga |
+
+---
+
+## Key Files
 
 ```
 sultan-agent/
-├── app.json          # Expo config (owner, projectId, android package)
-├── eas.json          # EAS build config (Node 20.19.4 specified)
-├── google-services.json  # Firebase config
-├── .github/workflows/build-apk.yml  # Auto-build + Telegram notify
-├── app/              # Expo Router screens
-├── components/       # React Native components
-├── context/          # App context (AI, audio, etc.)
-└── constants/        # App constants
+├── app.json                          # Expo config (owner=blcobra858, projectId, package)
+├── eas.json                          # EAS build config (node: 20.19.4)
+├── google-services.json              # Firebase config (already in repo)
+├── assets/images/icon.png            # App icon (added to fix prebuild)
+├── .github/workflows/build-apk.yml  # Auto-build + Telegram APK notification
+├── app/                             # Expo Router screens
+├── components/                      # React Native components
+├── context/                         # AI, audio context
+└── constants/                       # App constants
 ```
 
 ---
 
-## Important Fixes Already Applied
+## How to Update Files on GitHub (IMPORTANT)
 
-1. **EAS account changed** — Old account se naye `blcobra858` account pe move kiya
-2. **app.json updated** — owner=blcobra858, projectId=72bd2537-...
-3. **eas.json Node version** — Node 20.19.4 set kiya (fix for EBADENGINE error)
-4. **Workflow file** — Direct APK Telegram pe bhejna added
-
----
-
-## How to Use GitHub API (No git push allowed)
+**Shell base64 ya curl se kaam NAHI karta** — content truncate hota hai.
+Hamesha Node.js https module use karo:
 
 ```javascript
-// File update karne ka sahi tarika (Node.js):
 const https = require('https');
 const fs = require('fs');
 
-// 1. Pehle current SHA lo
-// GET https://api.github.com/repos/OWNER/REPO/contents/PATH
+// Step 1: Current SHA lo
+const getOpts = {
+  hostname: 'api.github.com',
+  path: '/repos/godofthunder7890-crypto/sultan-agent/contents/PATH',
+  method: 'GET',
+  headers: {
+    'Authorization': 'Bearer ' + process.env.GITHUB_ACCESS_TOKEN,
+    'Accept': 'application/vnd.github+json',
+    'User-Agent': 'Sultan-Agent-Bot'
+  }
+};
 
-// 2. Phir PUT karo updated content ke saath
-// Content MUST be base64 encoded
+// Step 2: PUT with base64 content + sha
 const body = JSON.stringify({
   message: "commit message",
   content: Buffer.from(fileContent).toString('base64'),
-  sha: currentSHA  // required for updates
+  sha: existingSHA  // required for updates, omit for new files
 });
-// PUT https://api.github.com/repos/OWNER/REPO/contents/PATH
+// PUT to same path
 ```
-
-**Important:** `base64 -w 0` shell command se kaam nahi karta (content truncate hota hai).
-Hamesha Node.js `Buffer.from(content).toString('base64')` use karo.
-
----
-
-## Current Build Status
-
-- GitHub Actions workflow: **Working** (triggers on every push to main)
-- EAS build: **Being fixed** (Node version fix applied, testing in progress)
-- Telegram notification: **Working** (APK/link bhejta hai)
-
----
-
-## Next Steps / Known Issues
-
-- EAS build Node.js 20.19.4 fix kiya — agle build pe test hoga
-- Agar build phir fail ho: EAS dashboard pe logs dekho
-  - https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds
-- Agar APK > 49MB ho: Telegram mein download link aayega (file nahi)
 
 ---
 
 ## Commands for Next Agent
 
 ```bash
-# GitHub repo latest runs check karo
+# Latest GitHub Actions runs check karo
 GH_TOKEN=$GITHUB_ACCESS_TOKEN gh run list --repo godofthunder7890-crypto/sultan-agent --limit 5
 
-# Latest run logs dekho
+# Specific run ke logs dekho
 GH_TOKEN=$GITHUB_ACCESS_TOKEN gh run view RUN_ID --repo godofthunder7890-crypto/sultan-agent --log
 
-# EAS builds check karo (Replit terminal se)
+# EAS builds check karo
 EXPO_TOKEN=$EXPO_TOKEN eas build:list --platform android --limit 3
 
-# Manual build trigger karo
+# Manual GitHub Actions build trigger karo
 GH_TOKEN=$GITHUB_ACCESS_TOKEN gh workflow run build-apk.yml --repo godofthunder7890-crypto/sultan-agent
+
+# EAS build error GraphQL se dekho
+# buildId EAS dashboard se lo: https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds
+EXPO_TOKEN=$EXPO_TOKEN node -e "
+const https = require('https');
+const q = JSON.stringify({ query: \`{ builds { byId(buildId: \"BUILD_ID\") { status error { errorCode message } logFiles } } }\` });
+const r = https.request({ hostname: 'api.expo.dev', path: '/graphql', method: 'POST', headers: { 'Authorization': 'Bearer ' + process.env.EXPO_TOKEN, 'Content-Type': 'application/json' } }, res => { let d=''; res.on('data',c=>d+=c); res.on('end',()=>console.log(d)); });
+r.write(q); r.end();
+"
 ```
+
+---
+
+## Current Status (Last Updated: May 13, 2026)
+
+- GitHub Actions workflow: **Working**
+- Telegram notification: **Working** (APK direct bhejta hai)
+- EAS build: **Being fixed** — assets/images/icon.png add kiya, Node 20.19.4 set kiya
+- Next build should succeed now
+
+---
+
+## EAS Build Failure Debugging
+
+Agar EAS build fail ho toh:
+1. GitHub Actions run ke logs dekho — EAS build ID milega
+2. EAS dashboard pe jaao: https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds
+3. Failed build click karo → "Build logs" tab
+4. "PREBUILD" phase mein errors dekho
+5. Common errors:
+   - `EBADENGINE` → eas.json mein node version check karo
+   - `Cannot find module` → package install issue
+   - `Error: The file ... does not exist` → assets missing hain
