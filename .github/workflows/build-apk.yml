@@ -47,10 +47,10 @@ jobs:
           APK_URL=""
           for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
             RESULT=$(eas build:list --platform android --limit 1 --non-interactive --json 2>/dev/null || echo "[]")
-            STATUS=$(node -e "try{const d=JSON.parse(process.argv[1]);console.log(d[0]?d[0].status:'unknown')}catch(e){console.log('unknown')}" "$RESULT")
+            STATUS=$(echo "$RESULT" | node -p "try{const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8'));d[0]?d[0].status:'unknown'}catch(e){'unknown'}")
             echo "Attempt $i - Status: $STATUS"
             if [ "$STATUS" = "FINISHED" ]; then
-              APK_URL=$(node -e "try{const d=JSON.parse(process.argv[1]);console.log((d[0]&&d[0].artifacts&&d[0].artifacts.buildUrl)?d[0].artifacts.buildUrl:'')}catch(e){console.log('')}" "$RESULT")
+              APK_URL=$(echo "$RESULT" | node -p "try{const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8'));(d[0]&&d[0].artifacts&&d[0].artifacts.buildUrl)?d[0].artifacts.buildUrl:''}catch(e){''}")
               echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
               echo "build_status=success" >> $GITHUB_OUTPUT
               break
@@ -69,45 +69,21 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BUILD_URL: ${{ steps.eas_build.outputs.build_url }}
+          APK_URL: ${{ steps.wait_build.outputs.apk_url }}
+          BUILD_STATUS: ${{ steps.wait_build.outputs.build_status }}
         run: |
-          BUILD_URL="${{ steps.eas_build.outputs.build_url }}"
-          APK_URL="${{ steps.wait_build.outputs.apk_url }}"
-          BUILD_STATUS="${{ steps.wait_build.outputs.build_status }}"
           SHORT_SHA="${GITHUB_SHA::7}"
-
           if [ "$BUILD_STATUS" = "success" ] && [ -n "$APK_URL" ]; then
-            MSG="Sultan Agent APK Ready!
-
-APK Download Link:
-$APK_URL
-
-EAS Dashboard:
-$BUILD_URL
-
-Commit: $SHORT_SHA | Branch: $GITHUB_REF_NAME"
-
+            MSG="Sultan Agent APK Ready! APK: $APK_URL | EAS: $BUILD_URL | Commit: $SHORT_SHA"
           elif [ "$BUILD_STATUS" = "failed" ]; then
-            MSG="Sultan Agent APK Build FAILED!
-
-EAS Dashboard:
-$BUILD_URL
-
-Commit: $SHORT_SHA | Branch: $GITHUB_REF_NAME"
-
+            MSG="Sultan Agent APK Build FAILED! EAS: $BUILD_URL | Commit: $SHORT_SHA"
           else
-            MSG="Sultan Agent APK Build Submitted!
-
-EAS pe build chal rahi hai (~15 min).
-Check karo:
-$BUILD_URL
-
-Commit: $SHORT_SHA | Branch: $GITHUB_REF_NAME"
+            MSG="Sultan Agent APK Build Submitted! EAS pe chal rahi hai ~15 min. Check: $BUILD_URL | Commit: $SHORT_SHA"
           fi
-
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -F "chat_id=${TELEGRAM_CHAT_ID}" \
             -F "text=${MSG}"
-          echo "Telegram notification sent!"
 
       - name: Build submitted!
         run: |
