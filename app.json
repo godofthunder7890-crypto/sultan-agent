@@ -40,18 +40,13 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       "expo-font",
       "expo-web-browser",
       [
         "expo-av",
         {
-          "microphonePermission": "JARVIX needs microphone access for live AI voice conversations."
+          "microphonePermission": "JARVIX needs microphone access for voice conversations."
         }
       ],
       [
@@ -60,7 +55,8 @@
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "minSdkVersion": 24
+            "minSdkVersion": 24,
+            "kotlinVersion": "1.9.24"
           }
         }
       ]
