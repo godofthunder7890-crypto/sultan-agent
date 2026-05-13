@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sultan Agent",
     "slug": "sultan-agent",
-    "owner": "suhanshaikh78957",
+    "owner": "blcobra858",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -70,7 +70,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "1bd4abf0-bbef-47c9-a6b0-cb72f58a243c"
+        "projectId": "72bd2537-674f-4d3b-b6b3-6969b43350f0"
       }
     }
   }
