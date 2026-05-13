@@ -149,6 +149,17 @@ export default function ChatScreen() {
   async function handleSend() {
     const text = input.trim();
     if (!text || loading) return;
+
+    const groqKey = settings.groqKey || GROQ_API_KEY;
+    if (!groqKey) {
+      Alert.alert(
+        "API Key Missing",
+        "Settings tab mein apna Groq API Key daalo. groq.com pe free mein milti hai.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     setInput("");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -163,7 +174,7 @@ export default function ChatScreen() {
       const reply = await callGroq(
         [...history, { role: "user", content: text }],
         settings.selectedModel,
-        ""
+        groqKey
       );
       addMessage({
         role: "assistant",
