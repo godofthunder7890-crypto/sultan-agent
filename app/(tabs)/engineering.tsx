@@ -336,7 +336,7 @@ export default function EngineeringScreen() {
               {(
                 [
                   ["Project Name *", "name", "MA Electrical Wiring"],
-                  ["Client Name *", "client", "ABC Corporation"],
+                  ["Client Name *", "client", "HELL 52"],
                   ["Description", "description", "Brief details..."],
                   ["Amount (PKR)", "amount", "50000"],
                 ] as [string, string, string][]
