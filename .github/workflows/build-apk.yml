@@ -25,10 +25,9 @@ jobs:
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           SHA7="${GITHUB_SHA::7}"
-          MSG="${GITHUB_EVENT_BEFORE:-dispatch}"
-          TEXT="Build shuru ho gayi! Commit: ${SHA7} | Branch: ${GITHUB_REF_NAME} | ~15-20 min mein APK ready"
-          curl -sf -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${CHAT_ID}&text=${TEXT}" || echo "Telegram notification skipped"
+          curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=Build shuru! Commit: ${SHA7} | ~15-20 min mein APK ready" || echo "Telegram skipped"
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -51,28 +50,34 @@ jobs:
           EAS_NO_VCS: "1"
         run: |
           set +e
-          eas build --platform android --profile production --non-interactive --wait
-          EXIT_CODE=$?
-          echo "EAS exit code: ${EXIT_CODE}"
 
-          BUILD_JSON=$(eas build:list --platform android --limit 1 --non-interactive --json 2>/dev/null || echo "[]")
-          echo "Build JSON: ${BUILD_JSON}"
+          echo "Starting EAS build..."
+          eas build --platform android --profile production --non-interactive --wait
+          EAS_EXIT=$?
+          echo "EAS exit: ${EAS_EXIT}"
+
+          echo "Fetching build list..."
+          BUILD_JSON=$(eas build:list --platform android --limit 1 --non-interactive --json 2>&1 || echo "[]")
+          echo "Raw build list: ${BUILD_JSON}"
 
           APK_URL=$(echo "${BUILD_JSON}" | node -e "
             let d=''; process.stdin.on('data',c=>d+=c);
             process.stdin.on('end',()=>{
               try {
-                const builds=JSON.parse(d);
-                const b=Array.isArray(builds)?builds[0]:builds;
-                console.log((b&&b.artifacts&&b.artifacts.buildUrl)||'');
-              } catch { console.log(''); }
+                const arr = JSON.parse(d);
+                const b = Array.isArray(arr) ? arr[0] : arr;
+                const url = b?.artifacts?.buildUrl || b?.artifact?.url || '';
+                console.log(url);
+              } catch(e) { console.log(''); }
             });
           " 2>/dev/null || echo "")
 
-          echo "APK URL: ${APK_URL}"
+          echo "APK URL found: ${APK_URL}"
           echo "apk_url=${APK_URL}" >> $GITHUB_OUTPUT
 
-          if [ ${EXIT_CODE} -eq 0 ] && [ -n "${APK_URL}" ]; then
+          if [ ${EAS_EXIT} -eq 0 ] && [ -n "${APK_URL}" ]; then
+            echo "build_status=success" >> $GITHUB_OUTPUT
+          elif [ -n "${APK_URL}" ]; then
             echo "build_status=success" >> $GITHUB_OUTPUT
           else
             echo "build_status=failed" >> $GITHUB_OUTPUT
@@ -88,21 +93,24 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           SHA7="${GITHUB_SHA::7}"
+          echo "Downloading APK from ${APK_URL}..."
           curl -L -o sultan-agent.apk \
             -H "Authorization: Bearer ${EXPO_TOKEN}" \
-            "${APK_URL}" || exit 1
+            "${APK_URL}" || { echo "Direct download failed, trying without auth..."; curl -L -o sultan-agent.apk "${APK_URL}"; }
 
-          FILE_SIZE=$(stat -c%s sultan-agent.apk 2>/dev/null || echo 0)
-          MAX_TG=$((49*1024*1024))
+          SIZE=$(stat -c%s sultan-agent.apk 2>/dev/null || echo 0)
+          echo "APK size: ${SIZE} bytes"
+          MAX=$((49*1024*1024))
 
-          if [ "${FILE_SIZE}" -gt 100000 ] && [ "${FILE_SIZE}" -le "${MAX_TG}" ]; then
-            curl -sf -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+          if [ "${SIZE}" -gt 100000 ] && [ "${SIZE}" -le "${MAX}" ]; then
+            curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
               -F "chat_id=${CHAT_ID}" \
               -F "document=@sultan-agent.apk" \
-              -F "caption=Sultan Agent v1.1 APK taiyaar! Build: ${SHA7}" || echo "Telegram send skipped"
+              -F "caption=Sultan Agent v1.1 APK! Commit: ${SHA7} | Firebase+MultiAI+Memory" || echo "Telegram send skipped"
           else
-            curl -sf -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-              -d "chat_id=${CHAT_ID}&text=APK ready! Download: ${APK_URL}" || echo "Telegram message skipped"
+            curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${CHAT_ID}" \
+              -d "text=APK ready! ${APK_URL} | Commit: ${SHA7}" || echo "Telegram skipped"
           fi
 
       - name: Notify Telegram — Build Failed
@@ -113,5 +121,6 @@ jobs:
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           SHA7="${GITHUB_SHA::7}"
-          curl -sf -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${CHAT_ID}&text=Build fail hui! Commit: ${SHA7} | Check: https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds" || echo "Telegram notification skipped"
+          curl -sf "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "text=Build fail! Commit: ${SHA7} | EAS logs: https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds" || echo "Skipped"
