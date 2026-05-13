@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
@@ -27,10 +27,16 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build APK
+      - name: Submit APK build to EAS
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx eas-cli build --platform android --profile production --non-interactive
+          EAS_BUILD_NO_EXPO_GO_WARNING: "true"
+        run: eas build --platform android --profile production --non-interactive --no-wait
 
-      - name: Done
-        run: echo "Build submitted to EAS. Check https://expo.dev/accounts/suhanshaikh78957/projects/sultan-agent/builds"
+      - name: Build submitted!
+        run: |
+          echo "=============================="
+          echo "APK build submitted to EAS!"
+          echo "Check: https://expo.dev/accounts/suhanshaikh78957/projects/sultan-agent/builds"
+          echo "=============================="
+
