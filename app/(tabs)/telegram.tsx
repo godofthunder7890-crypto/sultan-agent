@@ -178,7 +178,7 @@ export default function TelegramScreen() {
     setLoading(false);
   }, [token]);
 
-  useEffect(() => { if (token) connectBot(); }, []);
+  useEffect(() => { if (token) connectBot(); }, [connectBot]);
 
   const pollUpdates = useCallback(async () => {
     if (!token || !connected) return;
