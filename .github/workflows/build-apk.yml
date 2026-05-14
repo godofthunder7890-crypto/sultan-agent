@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ─── Job 1: Deploy Bot to Railway ───────────────────────────────────────────
+  # ─── Job 1: Deploy Bot to Railway ─────────────────────────────────────────
   deploy-bot:
     name: Deploy Bot to Railway
     runs-on: ubuntu-latest
     steps:
-      - name: Set Railway env vars + trigger deploy
+      - name: Set all Railway env vars + trigger deploy
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -27,14 +27,14 @@ jobs:
           ENV_ID="b591b4fe-3105-4155-aa48-aed73d794e5b"
 
           set_var() {
-            curl -s -X POST https://backboard.railway.app/graphql/v2 \
-              -H "Authorization: Bearer $RAILWAY_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d "{\"query\":\"mutation { variableUpsert(input: { projectId: \\\"$PROJECT_ID\\\", environmentId: \\\"$ENV_ID\\\", serviceId: \\\"$SERVICE_ID\\\", name: \\\"$1\\\", value: \\\"$2\\\" }) }\"}" > /dev/null
+            curl -s -X POST https://backboard.railway.app/graphql/v2 \\
+              -H "Authorization: Bearer $RAILWAY_TOKEN" \\
+              -H "Content-Type: application/json" \\
+              -d "{\\"query\\":\\"mutation { variableUpsert(input: { projectId: \\\\\\\"$PROJECT_ID\\\\\\", environmentId: \\\\\\\"$ENV_ID\\\\\\", serviceId: \\\\\\\"$SERVICE_ID\\\\\\", name: \\\\\\\"$1\\\\\\", value: \\\\\\\"$2\\\\\\\" }) }\\"}" > /dev/null
             echo "  Set $1 ✓"
           }
 
-          echo "Setting all Railway environment variables..."
+          echo "=== Setting Railway environment variables ==="
           set_var "TELEGRAM_BOT_TOKEN" "$TELEGRAM_BOT_TOKEN"
           set_var "ADMIN_CHAT_ID" "$ADMIN_CHAT_ID"
           set_var "GROQ_API_KEY" "$GROQ_API_KEY"
@@ -45,15 +45,25 @@ jobs:
           set_var "FIREBASE_API_KEY" "AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s"
           set_var "FIREBASE_PROJECT_ID" "v11345"
           set_var "FIREBASE_USER_ID" "sultan"
+          echo "=== All vars set! Triggering redeploy... ==="
 
-          echo "Triggering Railway redeployment..."
-          curl -s -X POST https://backboard.railway.app/graphql/v2 \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"query\":\"mutation { serviceInstanceDeploy(serviceId: \\\"$SERVICE_ID\\\", environmentId: \\\"$ENV_ID\\\") }\"}" > /dev/null
-          echo "✅ Bot v6.0 deployed to Railway with all keys!"
+          curl -s -X POST https://backboard.railway.app/graphql/v2 \\
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \\
+            -H "Content-Type: application/json" \\
+            -d '{"query":"mutation { serviceInstanceRedeploy(environmentId: \"b591b4fe-3105-4155-aa48-aed73d794e5b\", serviceId: \"4e6ab161-cc6c-4945-81f6-b6242b4eb1f0\") }"}' > /dev/null
 
-  # ─── Job 2: Build Android APK ────────────────────────────────────────────────
+          echo "✅ Bot v6.0 redeployed to Railway!"
+
+      - name: Notify Telegram — Bot Deployed
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="🚀 *Sultan Agent v6.0 — Railway Deploy!*%0A%0A✅ Bot deployed successfully!%0A🤖 AI: Groq ⚡ → Gemini 🔮 → OpenAI 🧠%0A🔍 Web Search: ON%0A🔥 Firebase: v11345%0A🚂 Railway: 24\/7 Online%0A%0A_$(date '+%Y-%m-%d %H:%M') UTC_"
+          curl -s "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${MSG}&parse_mode=Markdown" > /dev/null
+          echo "✅ Telegram notified!"
+
+  # ─── Job 2: Build Android APK ───────────────────────────────────────────────
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
@@ -75,12 +85,47 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build APK (production profile)
-        run: eas build --platform android --profile production --non-interactive --no-wait
+      - name: Auto-link EAS project + Build APK
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Build started
         run: |
-          echo "✅ APK build submitted to EAS Cloud!"
-          echo "Track at: https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds"
+          echo "=== Logged in as ==="
+          eas whoami
+
+          echo "=== Linking EAS project for this account ==="
+          # Get the owner from eas whoami (first word = username)
+          OWNER=$(eas whoami | head -1 | awk '{print $1}')
+          echo "Owner: $OWNER"
+
+          # Update app.json owner to match logged-in user
+          node -e "
+            const fs = require('fs');
+            const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            app.expo.owner = '$OWNER';
+            if (!app.expo.extra) app.expo.extra = {};
+            if (!app.expo.extra.eas) app.expo.extra.eas = {};
+            delete app.expo.extra.eas.projectId;
+            fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
+            console.log('app.json updated — owner:', app.expo.owner);
+          "
+
+          echo "=== Initializing EAS project ==="
+          eas project:init --non-interactive --force 2>/dev/null || true
+
+          echo "=== Starting APK build (no-wait — cloud build) ==="
+          eas build --platform android --profile production --non-interactive --no-wait
+
+      - name: Notify Telegram — APK Build Started
+        if: always()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STATUS: ${{ job.status }}
+        run: |
+          if [ "$STATUS" = "success" ]; then
+            MSG="📱 *APK Build Started!*%0A%0A✅ EAS Cloud build submitted!%0ATrack at: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds%0A%0A_Build takes ~10-15 mins. Download link aayega automatically._"
+          else
+            MSG="❌ *APK Build Failed!*%0A%0AGitHub Actions mein error aaya.%0ACheck: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
+          fi
+          curl -s "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${MSG}&parse_mode=Markdown" > /dev/null
+          echo "Telegram notified — Status: $STATUS"
