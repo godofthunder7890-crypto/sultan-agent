@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+buildCommand = "cd bot-server && npm install"
+
+[deploy]
+startCommand = "cd bot-server && node index.js"
+restartPolicyType = "always"
+restartPolicyMaxRetries = 99
+healthcheckPath = "/"
+healthcheckTimeout = 10
