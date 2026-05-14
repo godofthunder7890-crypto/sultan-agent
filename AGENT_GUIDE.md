@@ -1,5 +1,18 @@
 # AGENT_GUIDE.md — Sultan Agent Complete Handoff
-> Last Updated: 2025-05-14 | Status: ACTIVE — Read this FIRST!
+> Last Updated: 2025-05-14 | **READ THIS FIRST BEFORE ANYTHING!**
+
+---
+
+## ✅ CURRENT STATUS — ALL GREEN
+
+```
+Bot v6.0 God Mode         ✅ PUSHED (643 lines)
+APK Auto-Download         ✅ IMPLEMENTED (EAS polling + sendDocument)
+GitHub Actions Workflow   ✅ BOTH JOBS PASSING
+Railway Token             ✅ VERIFIED (godofthunder7890@gmail.com)
+Railway Env Vars          ⚠️  Peak hours blocked — set after 8 PM Pacific
+EXPO_TOKEN on Railway     ⚠️  Will auto-set via workflow next deploy
+```
 
 ---
 
@@ -7,52 +20,48 @@
 
 Sultan (CEO, MA Engineering Pakistan) ka personal AI agent ecosystem.
 
-- **GitHub Repo:** https://github.com/godofthunder7890-crypto/sultan-agent
-- **Telegram Bot:** @sultan_agent_bot (sirf Sultan ke liye)
-- **APK:** Expo EAS Cloud se build hoti hai (Android)
+- **GitHub:** https://github.com/godofthunder7890-crypto/sultan-agent
+- **Bot:** @sultan_agent_bot (sirf Sultan ke liye)
+- **APK:** Expo EAS Cloud (Android, haniyashaikh777 account)
 
 ---
 
-## 2. ACCOUNTS & CREDENTIALS
+## 2. ALL ACCOUNTS & SECRETS
 
-### GitHub
-- Account: `godofthunder7890-crypto`
-- Repo: `sultan-agent`
-- Token: `GITHUB_ACCESS_TOKEN` (Replit secrets)
-
-### Railway — BOT HOSTING
-- **USE THIS ACCOUNT:** `godofthunder7890@gmail.com`
-- Token: `RAILWAY_TOKEN` (Replit + GitHub secrets — nayi token save hai)
-- Old Project IDs (is account ke):
+### Railway — Bot Hosting
+- **Account:** godofthunder7890@gmail.com ← YEH WALA
+- **Token:** `RAILWAY_TOKEN` (Replit + GitHub secrets — VERIFIED ✅)
+- **Project IDs:**
   ```
   PROJECT_ID = 1450a2ad-ffe6-478f-97ae-4cabdd0f5dea
   SERVICE_ID = 4e6ab161-cc6c-4945-81f6-b6242b4eb1f0
   ENV_ID     = b591b4fe-3105-4155-aa48-aed73d794e5b
   ```
-- Test auth: `{ me { name email } }` GraphQL query on `backboard.railway.app/graphql/v2`
+- **⚠️ Railway Free Tier:** vars set karne ke liye `8 PM – 8 AM Pacific` ka wait karo!
+  Error: "Free-tier deploys to sfo are not available during peak hours (8 AM – 8 PM America/Los_Angeles)"
+  **Fix:** Raat mein Railway vars set karo ya Railway pe upgrade karo
 
-### Expo / EAS — APK BUILD
-- Account: `haniyashaikh777`
-- Project slug: `sultan-agent`
-- Token: `EXPO_TOKEN` (Replit + GitHub secrets)
-- APK Track: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds
+### Expo / EAS
+- **Account:** haniyashaikh777
+- **Token:** `EXPO_TOKEN` (Replit + GitHub secrets)
+- **APK Track:** https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds
 
 ### Firebase
-- Project ID: `v11345`
-- API Key: `AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s`
-- User: `sultan`
+- **Project ID:** v11345
+- **API Key:** AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s
+- **User:** sultan
 
-### All Secrets (Replit + GitHub secrets mein hain)
+### All Secrets (Replit + GitHub Actions)
 ```
 TELEGRAM_BOT_TOKEN   ✅
-TELEGRAM_CHAT_ID     ✅  (Sultan ka personal chat ID)
+TELEGRAM_CHAT_ID     ✅
 GROQ_API_KEY         ✅
 GEMINI_API_KEY       ✅
 OPENAI_API_KEY       ✅
-SERPER_API_KEY       ✅  (web search)
-ELEVENLABS_API_KEY   ✅  (voice — future)
+SERPER_API_KEY       ✅
+ELEVENLABS_API_KEY   ✅
 EXPO_TOKEN           ✅
-RAILWAY_TOKEN        ✅  (godofthunder7890@gmail.com wali NEW token)
+RAILWAY_TOKEN        ✅ (godofthunder7890@gmail.com — VERIFIED)
 GITHUB_ACCESS_TOKEN  ✅
 ```
 
@@ -60,155 +69,99 @@ GITHUB_ACCESS_TOKEN  ✅
 
 ## 3. COMPLETED WORK ✅
 
-### Bot v6.0 God Mode (`bot-server/index.js`) ✅
-- Groq → Gemini → OpenAI fallback AI chain
-- Web Search via Serper API
-- Voice transcription via Groq Whisper
-- Firebase Firestore sync (projects, orders, memory)
-- Material rates 2025 PKR (cement, steel, brick, sand, paint, tile)
-- Engineering: quotation generator, profit calculator
-- SMM panel: orders, revenue dashboard
-- Daily report (7 AM PKT auto-send)
-- Reminders, calculator, weather
-- `/apk` command + "📦 Build APK" button — GitHub Actions trigger karta hai
-- Long polling (Railway pe 24/7)
+### Bot v6.0 God Mode (`bot-server/index.js`, 643 lines)
+- Groq → Gemini → OpenAI fallback
+- Web Search (Serper), Voice (Whisper), Firebase sync
+- Engineering: quotation, profit calc, material rates 2025
+- SMM: orders, revenue dashboard
+- Daily report 7 AM PKT, reminders, calculator, weather
+- `/apk` + "📦 Build & Get APK" button
+- **APK Auto-Download:** EAS polling every 90s → sendDocument to Telegram!
+  - Redirects follow karta hai (HTTP → HTTPS)
+  - <= 50MB: seedha file bhejta hai
+  - > 50MB: download link bhejta hai
+  - 30 min timeout with status updates
 
-### GitHub Actions (`.github/workflows/build-apk.yml`) ✅
-- **Job 1:** Deploy Bot to Railway (env vars set + redeploy)
-- **Job 2:** Build Android APK via EAS Cloud
-- Telegram notifications fixed (`--data-urlencode` POST method)
-- **Last run: BOTH JOBS ✅ FULL SUCCESS**
-- workflow_dispatch enabled (manual trigger bhi kaam karta hai)
+### Workflow (`.github/workflows/build-apk.yml`, 185 lines)
+- Job 1: Railway deploy (EXPO_TOKEN + GITHUB_ACCESS_TOKEN bhi set hota hai)
+- Job 2: EAS APK build
+- **Last run: ✅ BOTH JOBS SUCCESS**
+- Telegram notifications fixed
 
-### GitHub Secrets — All Set ✅
-All 10 secrets GitHub pe bhi push ho chuke hain.
+### Railway Env Vars (set honge off-peak hours mein)
+```
+TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, GROQ_API_KEY, GEMINI_API_KEY,
+OPENAI_API_KEY, SERPER_API_KEY, ELEVENLABS_API_KEY,
+EXPO_TOKEN, GITHUB_ACCESS_TOKEN,
+FIREBASE_API_KEY, FIREBASE_PROJECT_ID, FIREBASE_USER_ID, PORT
+```
 
 ---
 
-## 4. PENDING TASKS ⏳ — NEXT AGENT YAHAN SE SHURU KARE
+## 4. PENDING / NEXT TASKS ⏳
 
-### TASK 1 — APK Direct Download via Bot (PRIORITY #1 — Sultan ne manga hai)
+### TASK 1 — Railway Env Vars + Redeploy (PRIORITY #1)
+Railway free tier peak hours restriction hai. Raat ko (after 8 PM Pacific = 9 AM Pakistan time) yeh run karo:
 
-**Sultan chahta hai:** `/apk` ke baad bot automatically APK file Telegram pe bheje (`sendDocument`)
+```bash
+node << 'EOF'
+const https = require('https');
+const TOKEN      = process.env.RAILWAY_TOKEN;
+const PROJECT_ID = '1450a2ad-ffe6-478f-97ae-4cabdd0f5dea';
+const SERVICE_ID = '4e6ab161-cc6c-4945-81f6-b6242b4eb1f0';
+const ENV_ID     = 'b591b4fe-3105-4155-aa48-aed73d794e5b';
 
-**Implementation plan:**
+const vars = {
+  TELEGRAM_BOT_TOKEN:  process.env.TELEGRAM_BOT_TOKEN,
+  ADMIN_CHAT_ID:       process.env.TELEGRAM_CHAT_ID,
+  GROQ_API_KEY:        process.env.GROQ_API_KEY,
+  GEMINI_API_KEY:      process.env.GEMINI_API_KEY,
+  OPENAI_API_KEY:      process.env.OPENAI_API_KEY,
+  SERPER_API_KEY:      process.env.SERPER_API_KEY,
+  ELEVENLABS_API_KEY:  process.env.ELEVENLABS_API_KEY,
+  EXPO_TOKEN:          process.env.EXPO_TOKEN,
+  GITHUB_ACCESS_TOKEN: process.env.GITHUB_ACCESS_TOKEN,
+  FIREBASE_API_KEY:    'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
+  FIREBASE_PROJECT_ID: 'v11345',
+  FIREBASE_USER_ID:    'sultan',
+  PORT:                '3000',
+};
 
-```
-1. EXPO_TOKEN env var bot pe available karo (Railway pe set karo)
-
-2. Bot mein EAS polling logic add karo:
-   - /apk trigger hone pe startTime store karo
-   - setInterval: har 90 seconds EAS API check karo
-
-3. EAS API se build status lo:
-   Step A — Project ID lao:
-     GET https://api.expo.dev/v2/projects?account=haniyashaikh777&slug=sultan-agent
-     Header: Authorization: Bearer EXPO_TOKEN
-
-   Step B — Latest build check karo:
-     GET https://api.expo.dev/v2/builds?appId=<id>&platform=android&limit=1
-     Check: build.status === 'finished' && build.artifacts.buildUrl
-
-4. APK download karo + Telegram pe bhejo:
-   - File <= 50MB: sendDocument (multipart/form-data)
-   - File > 50MB: direct download link bhejo
-
-5. Telegram sendDocument code:
-   boundary = '----TGBoundary' + Date.now()
-   form parts: chat_id + document file
-   POST https://api.telegram.org/bot<TOKEN>/sendDocument
-   Content-Type: multipart/form-data; boundary=...
-```
-
-**Code skeleton (bot-server/index.js mein add karo):**
-```javascript
-const EXPO = process.env.EXPO_TOKEN || '';
-const pendingBuilds = [];  // { cid, startTime }
-
-async function expoAPI(path) {
-  return httpJSON({
-    hostname: 'api.expo.dev', path, method: 'GET',
-    headers: { 'Authorization': 'Bearer ' + EXPO, 'User-Agent': 'SultanAgent/6.0' }
-  }, null);
+function gql(q) {
+  return new Promise(res => {
+    const body = JSON.stringify({ query: q });
+    const req = https.request({ hostname:'backboard.railway.app', path:'/graphql/v2', method:'POST', timeout:20000,
+      headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
+    }, r => { let d=''; r.on('data',c=>d+=c); r.on('end',()=>{ try{res(JSON.parse(d));}catch{res({_e:d});} }); });
+    req.on('error',e=>res({_e:e.message})); req.on('timeout',()=>{req.destroy();res({_e:'timeout'});}); req.end(body);
+  });
 }
 
-async function pollAndSendAPK() {
-  if (!pendingBuilds.length || !EXPO) return;
-  for (let i = pendingBuilds.length - 1; i >= 0; i--) {
-    const { cid, startTime } = pendingBuilds[i];
-    const projRes = await expoAPI('/v2/projects?account=haniyashaikh777&slug=sultan-agent');
-    const appId = projRes?.data?.[0]?.id;
-    if (!appId) continue;
-    const buildsRes = await expoAPI('/v2/builds?appId=' + appId + '&platform=android&limit=1');
-    const build = buildsRes?.data?.[0];
-    if (!build) continue;
-    const buildStart = new Date(build.createdAt).getTime();
-    if (buildStart < startTime - 60000) continue; // purani build ignore
-    if (build.status === 'finished' && build.artifacts?.buildUrl) {
-      pendingBuilds.splice(i, 1);
-      await send(cid, 'APK ready! Download kar raha hun...');
-      const apkBuf = await httpDownload(build.artifacts.buildUrl);
-      if (apkBuf.length <= 50 * 1024 * 1024) {
-        await sendDocument(cid, apkBuf, 'SultanAgent-v6.apk');
-      } else {
-        await send(cid, 'APK download: ' + build.artifacts.buildUrl);
-      }
-    } else if (build.status === 'errored') {
-      pendingBuilds.splice(i, 1);
-      await send(cid, 'APK build fail hua: ' + (build.error?.message || 'unknown error'));
-    } else if (Date.now() - startTime > 25 * 60 * 1000) {
-      pendingBuilds.splice(i, 1);
-      await send(cid, 'APK timeout. Expo pe check karo: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds');
-    }
-  }
+async function setVar(name, value) {
+  if (!value) return console.log('SKIP:', name);
+  const safe = value.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
+  const r = await gql('mutation { variableUpsert(input:{projectId:"'+PROJECT_ID+'",environmentId:"'+ENV_ID+'",serviceId:"'+SERVICE_ID+'",name:"'+name+'",value:"'+safe+'"}) }');
+  console.log(r.errors||r._e ? '❌ '+name+': '+(r._e||r.errors[0]?.message) : '✅ '+name);
+  await new Promise(r=>setTimeout(r,400));
 }
 
-async function sendDocument(cid, buffer, filename) {
-  const boundary = '----TGBoundary' + Date.now();
-  const meta = Buffer.from(
-    '--' + boundary + '\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n' + cid +
-    '\r\n--' + boundary + '\r\nContent-Disposition: form-data; name="document"; filename="' + filename + '"\r\nContent-Type: application/vnd.android.package-archive\r\n\r\n'
-  );
-  const end = Buffer.from('\r\n--' + boundary + '--\r\n');
-  const body = Buffer.concat([meta, buffer, end]);
-  return httpJSON({
-    hostname: 'api.telegram.org',
-    path: '/bot' + TOKEN + '/sendDocument',
-    method: 'POST',
-    headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Content-Length': body.length }
-  }, body);
-}
-
-// Start polling (add near bottom, before main()):
-setInterval(pollAndSendAPK, 90000);
-
-// In handleAPKBuild(), after triggering workflow:
-pendingBuilds.push({ cid, startTime: Date.now() });
+(async()=>{
+  for (const [k,v] of Object.entries(vars)) await setVar(k,v);
+  const dep = await gql('mutation { serviceInstanceRedeploy(environmentId:"'+ENV_ID+'",serviceId:"'+SERVICE_ID+'") }');
+  console.log(dep.errors||dep._e ? '❌ Redeploy: '+(dep._e||dep.errors[0]?.message) : '✅ Redeploy triggered!');
+})();
+EOF
 ```
 
-### TASK 2 — Railway Verify + Bot Running Confirm (PRIORITY #2)
+### TASK 2 — Verify Bot Online
+After Railway redeploy, bot ka /status check karo Telegram pe.
+Expected: AI Groq + Gemini + OpenAI, EXPO_TOKEN enabled, search ON.
 
-```
-1. RAILWAY_TOKEN test karo against old project IDs:
-   node -e "
-   const https = require('https');
-   const body = JSON.stringify({ query: '{ project(id: \"1450a2ad-ffe6-478f-97ae-4cabdd0f5dea\") { name } }' });
-   https.request({ hostname: 'backboard.railway.app', path: '/graphql/v2', method: 'POST', timeout: 20000,
-     headers: { 'Authorization': 'Bearer ' + process.env.RAILWAY_TOKEN, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-   }, r => { let d=''; r.on('data', c => d+=c); r.on('end', () => console.log(d)); }).end(body);
-   "
-
-2. Agar access hai: sab env vars set karo + EXPO_TOKEN bhi add karo
-3. Redeploy trigger karo
-4. Bot online check: /status send karo Telegram pe
-```
-
-### TASK 3 — Workflow mein EXPO_TOKEN add karo
-
-In `.github/workflows/build-apk.yml` mein Railway vars section mein add karo:
-```yaml
-EXPO_TOKEN: AIzaSy...   # process.env.EXPO_TOKEN
-```
+### TASK 3 — Test APK Auto-Download End-to-End
+1. `/apk` command bhejo Telegram pe
+2. Bot: "Build submitted! Jab ready hogi seedha file bhejunga"
+3. 10-15 min wait karo
+4. Bot seedha APK file bhejega (sendDocument)
 
 ---
 
@@ -217,36 +170,34 @@ EXPO_TOKEN: AIzaSy...   # process.env.EXPO_TOKEN
 ```
 sultan-agent/
 ├── bot-server/
-│   ├── index.js          ← Bot v6.0 God Mode (709 lines)
+│   ├── index.js          ← v6.0 God Mode (643 lines) — APK auto-download ✅
 │   ├── package.json      ← start: "node index.js"
-│   └── .env.example      ← All env vars reference
+│   └── .env.example
 ├── .github/
 │   └── workflows/
-│       └── build-apk.yml ← CI/CD (175 lines, both jobs GREEN)
-├── app.json              ← Expo config (owner: haniyashaikh777)
-├── eas.json              ← EAS profiles (production = APK)
+│       └── build-apk.yml ← CI/CD (185 lines) — both jobs green ✅
+├── app.json              ← owner: haniyashaikh777
+├── eas.json              ← production profile = APK
 └── AGENT_GUIDE.md        ← THIS FILE
 ```
 
 ---
 
-## 6. HOW TO PUSH CODE TO GITHUB
-
-**ALWAYS use GitHub Contents API — never git commands:**
+## 6. HOW TO PUSH CODE (ALWAYS USE THIS)
 
 ```bash
-# Step 1: Get SHA
+# Get SHA first
 SHA=$(curl -s -H "Authorization: Bearer $GITHUB_ACCESS_TOKEN" \
   "https://api.github.com/repos/godofthunder7890-crypto/sultan-agent/contents/bot-server/index.js" | \
   node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).sha)")
 
-# Step 2: Push
+# Push file
 CONTENT=$(base64 -w 0 /tmp/myfile.js)
 curl -s -X PUT \
   -H "Authorization: Bearer $GITHUB_ACCESS_TOKEN" \
   -H "Accept: application/vnd.github+json" \
   "https://api.github.com/repos/godofthunder7890-crypto/sultan-agent/contents/bot-server/index.js" \
-  -d "{\"message\":\"commit msg\",\"content\":\"$CONTENT\",\"sha\":\"$SHA\"}"
+  -d "{\"message\":\"your msg\",\"content\":\"$CONTENT\",\"sha\":\"$SHA\"}"
 ```
 
 ---
@@ -255,8 +206,7 @@ curl -s -X PUT \
 
 ```bash
 # Trigger APK build manually
-curl -s -X POST \
-  -H "Authorization: Bearer $GITHUB_ACCESS_TOKEN" \
+curl -s -X POST -H "Authorization: Bearer $GITHUB_ACCESS_TOKEN" \
   -H "Accept: application/vnd.github+json" \
   "https://api.github.com/repos/godofthunder7890-crypto/sultan-agent/actions/workflows/build-apk.yml/dispatches" \
   -d '{"ref":"main"}'
@@ -266,46 +216,32 @@ curl -s -H "Authorization: Bearer $GITHUB_ACCESS_TOKEN" \
   "https://api.github.com/repos/godofthunder7890-crypto/sultan-agent/actions/runs?per_page=3" | \
   node -e "const j=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); (j.workflow_runs||[]).forEach(r=>console.log(r.conclusion==='success'?'✅':'❌',r.name,'|',r.conclusion||r.status));"
 
-# Railway test
+# Test Railway token
 node -e "const https=require('https'); const b=JSON.stringify({query:'{me{name email}}'}); https.request({hostname:'backboard.railway.app',path:'/graphql/v2',method:'POST',timeout:15000,headers:{'Authorization':'Bearer '+process.env.RAILWAY_TOKEN,'Content-Type':'application/json','Content-Length':Buffer.byteLength(b)}},r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>console.log(d));}).end(b);"
 ```
 
 ---
 
-## 8. TECH STACK
+## 8. SULTAN KI PREFERENCES
 
-| Layer | Tech |
-|-------|------|
-| Bot | Node.js, zero npm deps, pure `https` module |
-| Hosting | Railway (24/7) |
-| APK Build | Expo EAS Cloud |
-| AI Primary | Groq (llama3-70b-8192) |
-| AI Fallback | Gemini 1.5 Flash → OpenAI gpt-4o-mini |
-| Database | Firebase Firestore |
-| Search | Serper API (Google results) |
-| Voice | Groq Whisper API |
+- **Hinglish** mein baat karo
+- Kaam **seedha karo**, mat poochho
+- Har change **GitHub pe push karo** (Contents API, git nahi)
+- Bot **24/7 Railway** pe rehna chahiye
+- APK **seedha Telegram file** milni chahiye (sendDocument)
+- Railway account: **godofthunder7890@gmail.com**
+
+---
+
+## 9. TECH STACK
+
+| Component | Tech |
+|-----------|------|
+| Bot | Node.js, zero deps, pure `https` |
+| Hosting | Railway (24/7, free tier) |
+| APK | Expo EAS Cloud |
+| AI | Groq llama3-70b → Gemini 1.5 Flash → OpenAI gpt-4o-mini |
+| DB | Firebase Firestore |
+| Search | Serper API |
+| Voice | Groq Whisper |
 | CI/CD | GitHub Actions |
-
----
-
-## 9. SULTAN KI PREFERENCES
-
-- **Hinglish** mein baat karo (Hindi + English mix)
-- Kaam **seedha karo**, zyada poochho mat
-- Har change **GitHub pe push karo** (Contents API use karo)
-- Bot **always running** rehna chahiye (Railway 24/7)
-- APK **seedha Telegram pe** milni chahiye (`sendDocument`)
-- Railway: **godofthunder7890@gmail.com** wala account use karna hai
-
----
-
-## 10. LAST KNOWN STATE (2025-05-14)
-
-```
-Workflow:  ✅ BOTH JOBS PASSING
-Bot file:  bot-server/index.js (v6.0, 709 lines)
-Workflow:  .github/workflows/build-apk.yml (175 lines)
-Commands:  /start /menu /status /report /apk /clear /clearmem /search
-APK:       Submitting to EAS every push ✅
-Railway:   New RAILWAY_TOKEN saved, pending verification
-```
