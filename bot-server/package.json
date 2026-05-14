@@ -1,12 +1,22 @@
 {
-  "name": "sultan-agent-bot-server",
-  "version": "1.0.0",
-  "description": "Sultan Agent — 24/7 Telegram Bot Server (Railway Deploy)",
+  "name": "sultan-agent-bot",
+  "version": "6.0.0",
+  "description": "Sultan Agent Bot Server v6.0 — God Mode",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node index.js"
   },
+  "dependencies": {},
   "engines": {
-    "node": ">=18"
-  }
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "ai",
+    "sultan",
+    "railway"
+  ],
+  "author": "Sultan (MA Engineering)"
 }
