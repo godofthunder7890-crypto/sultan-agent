@@ -15,6 +15,8 @@ const PORT    = parseInt(process.env.PORT   || '3000');
 const FB_KEY  = process.env.FIREBASE_API_KEY    || 'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s';
 const FB_ID   = process.env.FIREBASE_PROJECT_ID || 'v11345';
 const FB_USER = process.env.FIREBASE_USER_ID    || 'sultan';
+const GH_TOKEN = process.env.GITHUB_ACCESS_TOKEN || '';
+const GH_REPO  = 'godofthunder7890-crypto/sultan-agent';
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 http.createServer((_, res) => {
@@ -58,199 +60,219 @@ function httpDownload(url) {
 
 // ─── Telegram API ─────────────────────────────────────────────────────────────
 async function tg(method, body) {
-  const data = body ? JSON.stringify(body) : null;
+  const json = JSON.stringify(body);
   return httpJSON({
     hostname: 'api.telegram.org',
     path: '/bot' + TOKEN + '/' + method,
-    method: data ? 'POST' : 'GET',
-    headers: data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}
-  }, data);
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(json) }
+  }, json);
 }
 
-async function tgMultipart(fields, fileBuffer, filename, mimetype) {
-  const boundary = 'SultanBound' + Date.now();
-  const parts = [];
-  for (const [k, v] of Object.entries(fields))
-    parts.push('--' + boundary + '\r\nContent-Disposition: form-data; name="' + k + '"\r\n\r\n' + v + '\r\n');
-  parts.push('--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="' + filename + '"\r\nContent-Type: ' + mimetype + '\r\n\r\n');
-  const bodyBuf = Buffer.concat([Buffer.from(parts.join('')), fileBuffer, Buffer.from('\r\n--' + boundary + '--\r\n')]);
-  return httpJSON({
-    hostname: 'api.groq.com', path: '/openai/v1/audio/transcriptions', method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + GROQ, 'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Content-Length': bodyBuf.length }
-  }, bodyBuf);
+// ─── GitHub Actions Trigger ───────────────────────────────────────────────────
+async function triggerAPKBuild() {
+  if (!GH_TOKEN) return { ok: false, error: 'GITHUB_ACCESS_TOKEN not set in env' };
+  const body = JSON.stringify({ ref: 'main' });
+  const res = await httpJSON({
+    hostname: 'api.github.com',
+    path: '/repos/' + GH_REPO + '/actions/workflows/build-apk.yml/dispatches',
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + GH_TOKEN,
+      'Accept': 'application/vnd.github+json',
+      'User-Agent': 'SultanAgent/6.0',
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
+    },
+  }, body);
+  return res;
 }
 
-// ─── Firebase REST ────────────────────────────────────────────────────────────
-function toFS(data) {
-  const fields = {};
-  for (const [k, v] of Object.entries(data)) {
-    if (typeof v === 'string')       fields[k] = { stringValue: v };
-    else if (typeof v === 'number')  fields[k] = { integerValue: String(Math.floor(v)) };
-    else if (typeof v === 'boolean') fields[k] = { booleanValue: v };
-    else if (v != null)              fields[k] = { stringValue: String(v) };
-  }
-  return { fields };
+async function getLatestAPKBuild() {
+  if (!GH_TOKEN) return null;
+  const res = await httpJSON({
+    hostname: 'api.github.com',
+    path: '/repos/' + GH_REPO + '/actions/runs?per_page=5',
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer ' + GH_TOKEN,
+      'Accept': 'application/vnd.github+json',
+      'User-Agent': 'SultanAgent/6.0',
+    },
+  }, null);
+  return res?.workflow_runs || [];
 }
-function fromFS(doc) {
-  const o = { _id: doc.name?.split('/').pop() || '' };
-  for (const [k, v] of Object.entries(doc.fields || {}))
-    o[k] = v.stringValue ?? v.integerValue ?? v.booleanValue ?? v.doubleValue ?? '';
-  return o;
-}
-function fbSave(col, id, data) {
-  const body = JSON.stringify(toFS(data));
-  const keys = Object.keys(data).map(k => 'updateMask.fieldPaths=' + k).join('&');
-  httpJSON({
-    hostname: 'firestore.googleapis.com',
-    path: '/v1/projects/' + FB_ID + '/databases/(default)/documents/' + col + '/' + id + '?key=' + FB_KEY + '&' + keys,
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-  }, body).catch(() => {});
-}
-const fbCache = new Map();
-async function fbGet(col) {
-  const now = Date.now();
-  const cached = fbCache.get(col);
-  if (cached && now - cached.ts < 30000) return cached.data;
+
+// ─── Web Search ────────────────────────────────────────────────────────────────
+async function webSearch(q) {
+  if (!SERPER) return '❌ Serper API key nahi — web search disabled.';
   try {
-    const r = await httpJSON({
-      hostname: 'firestore.googleapis.com',
-      path: '/v1/projects/' + FB_ID + '/databases/(default)/documents/' + col + '?key=' + FB_KEY + '&pageSize=100',
-      method: 'GET'
-    });
-    const data = (r.documents || []).map(fromFS);
-    fbCache.set(col, { data, ts: now });
-    return data;
-  } catch { return cached?.data || []; }
-}
-function fbInvalidate(col) { fbCache.delete(col); }
-
-// ─── Web Search ───────────────────────────────────────────────────────────────
-async function webSearch(query) {
-  if (!SERPER) return 'Web search key nahi hai. Settings mein SERPER_API_KEY daalo.';
-  try {
-    const body = JSON.stringify({ q: query, num: 5 });
+    const body = JSON.stringify({ q, num: 5 });
     const r = await httpJSON({
       hostname: 'google.serper.dev', path: '/search', method: 'POST',
       headers: { 'X-API-KEY': SERPER, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
     }, body);
-    const results = (r.organic || []).slice(0, 4)
-      .map((x, i) => (i+1) + '. ' + x.title + '\n' + x.snippet + '\nSource: ' + x.link)
-      .join('\n\n');
-    return results || 'Koi result nahi mila.';
-  } catch(e) { return 'Search fail: ' + e.message; }
+    if (!r.organic?.length) return 'No results found.';
+    return r.organic.slice(0,5).map((x,i) => (i+1) + '. *' + x.title + '*\n' + x.snippet + '\n🔗 ' + x.link).join('\n\n');
+  } catch(e) { return '❌ Search error: ' + e.message; }
 }
 
-// ─── AI System ────────────────────────────────────────────────────────────────
-const AI_SYSTEM = `You are Sultan Agent v6.0 — God Mode AI for Sultan, CEO of MA Engineering, Pakistan.
-You are JARVIX — Sultan ka personal AI — ChatGPT + Gemini + Replit Agent combined:
-- Expert in civil/structural engineering, BOQ, project quotations, Pakistan construction (PKR rates 2025)
-- SMM panel expert (Instagram/YouTube followers, views, pricing, profit analysis)
-- Full-stack coding expert (write, debug, review, explain any language — React Native, Node.js, Python, etc.)
-- Business strategy, profit calculations, market analysis, investment advice
-- Personal assistant (research, notes, reminders, planning, web search)
-- Firebase & Railway deployment expert
-Personality: Direct, confident, expert. Like JARVIS — warm to Sultan.
-Language: ALWAYS reply in the EXACT same language Sultan uses (Urdu/English/Hinglish).
-Format: Use Markdown. Code in code blocks. Bullet points for lists.
-Special commands:
-- /search [query] — web search karo
-- /code [task] — code likho
-- /calc [expression] — calculate karo
-- /yaad [baat] — memory mein save karo
-- /projects — engineering projects dekho
-- /smm — SMM orders dekho
-- /report — daily report`;
+// ─── Firebase ─────────────────────────────────────────────────────────────────
+const fbCache = new Map();
+async function fbGet(path) {
+  if (fbCache.has(path) && Date.now() - fbCache.get(path).t < 30000) return fbCache.get(path).d;
+  try {
+    const r = await httpJSON({ hostname: 'firestore.googleapis.com', method: 'GET',
+      path: '/v1/projects/' + FB_ID + '/databases/(default)/documents/' + path + '?key=' + FB_KEY,
+      headers: {} }, null);
+    const docs = (r.documents||[]).map(doc => {
+      const id = doc.name.split('/').pop();
+      const fields = doc.fields || {};
+      const out = { _id: id };
+      for (const [k,v] of Object.entries(fields)) out[k] = v.stringValue ?? v.integerValue ?? v.booleanValue ?? '';
+      return out;
+    });
+    fbCache.set(path, { d: docs, t: Date.now() });
+    return docs;
+  } catch { return []; }
+}
+function fbInvalidate(path) { fbCache.delete(path); }
+async function fbSave(path, id, data) {
+  try {
+    const fields = {};
+    for (const [k,v] of Object.entries(data)) fields[k] = { stringValue: String(v) };
+    const body = JSON.stringify({ fields });
+    await httpJSON({
+      hostname: 'firestore.googleapis.com', method: 'PATCH',
+      path: '/v1/projects/' + FB_ID + '/databases/(default)/documents/' + path + '/' + id + '?key=' + FB_KEY,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, body);
+  } catch {}
+}
 
+// ─── AI Chain ─────────────────────────────────────────────────────────────────
 const chatHistory = new Map();
+function getHist(cid) { return chatHistory.get(cid) || []; }
 function addHist(cid, role, content) {
-  if (!chatHistory.has(cid)) chatHistory.set(cid, []);
-  const h = chatHistory.get(cid);
+  const h = getHist(cid);
   h.push({ role, content });
   if (h.length > 30) h.splice(0, h.length - 30);
+  chatHistory.set(cid, h);
 }
-function getHist(cid) { return chatHistory.get(cid) || []; }
 function clearHist(cid) { chatHistory.delete(cid); }
 
-async function aiGroq(msgs) {
-  if (!GROQ) throw new Error('no key');
-  const body = JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: AI_SYSTEM }, ...msgs], max_tokens: 2048, temperature: 0.8 });
-  const r = await httpJSON({ hostname: 'api.groq.com', path: '/openai/v1/chat/completions', method: 'POST', headers: { 'Authorization': 'Bearer ' + GROQ, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, body);
-  if (r.choices?.[0]?.message?.content) return { text: r.choices[0].message.content, by: 'Groq ⚡' };
-  throw new Error(r.error?.message || 'Groq failed');
-}
-async function aiGemini(msgs) {
-  if (!GEMINI) throw new Error('no key');
-  const contents = msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
-  const body = JSON.stringify({ contents, systemInstruction: { parts: [{ text: AI_SYSTEM }] }, generationConfig: { maxOutputTokens: 2048, temperature: 0.8 } });
-  const r = await httpJSON({ hostname: 'generativelanguage.googleapis.com', path: '/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, body);
-  if (r.candidates?.[0]?.content?.parts?.[0]?.text) return { text: r.candidates[0].content.parts[0].text, by: 'Gemini 🔮' };
-  throw new Error('Gemini failed');
-}
-async function aiOpenAI(msgs) {
-  if (!OPENAI) throw new Error('no key');
-  const body = JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'system', content: AI_SYSTEM }, ...msgs], max_tokens: 2048, temperature: 0.8 });
-  const r = await httpJSON({ hostname: 'api.openai.com', path: '/v1/chat/completions', method: 'POST', headers: { 'Authorization': 'Bearer ' + OPENAI, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, body);
-  if (r.choices?.[0]?.message?.content) return { text: r.choices[0].message.content, by: 'OpenAI 🧠' };
-  throw new Error('OpenAI failed');
+async function callGroq(cid, text) {
+  const hist = getHist(cid);
+  const msgs = [
+    { role: 'system', content: 'Tu Sultan ka personal AI agent hai — Sultan CEO hai MA Engineering, Pakistan ka. Hinglish mein baat karo. Engineering, SMM, business sab samjho.' },
+    ...hist,
+    { role: 'user', content: text },
+  ];
+  const body = JSON.stringify({ model: 'llama3-70b-8192', messages: msgs, max_tokens: 1500 });
+  const r = await httpJSON({
+    hostname: 'api.groq.com', path: '/openai/v1/chat/completions', method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + GROQ, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  }, body);
+  const t = r?.choices?.[0]?.message?.content;
+  if (t) { addHist(cid, 'user', text); addHist(cid, 'assistant', t); }
+  return t;
 }
 
-async function callAI(cid, userText) {
-  addHist(cid, 'user', userText);
-  const msgs = getHist(cid);
-  let result = null;
-  let errors = [];
-  if (GROQ)   { try { result = await aiGroq(msgs);   } catch(e) { errors.push('Groq: ' + e.message); log('[Groq]', e.message); } }
-  if (!result && GEMINI) { try { result = await aiGemini(msgs); } catch(e) { errors.push('Gemini: ' + e.message); log('[Gemini]', e.message); } }
-  if (!result && OPENAI) { try { result = await aiOpenAI(msgs); } catch(e) { errors.push('OpenAI: ' + e.message); log('[OpenAI]', e.message); } }
-  if (result) {
-    addHist(cid, 'assistant', result.text);
-    fbSave('users/' + FB_USER + '/telegram', String(Date.now()), {
-      type: 'ai_reply', text: result.text.slice(0, 400), provider: result.by,
-      chatId: String(cid), timestamp: Date.now(), role: 'assistant'
-    });
-  }
-  return result;
+async function callGemini(cid, text) {
+  const hist = getHist(cid);
+  const contents = [
+    ...hist.map(h => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: h.content }] })),
+    { role: 'user', parts: [{ text }] },
+  ];
+  const body = JSON.stringify({ contents, systemInstruction: { parts: [{ text: 'Tu Sultan ka personal AI agent hai — Hinglish mein baat karo. Engineering, SMM, business sab samjho.' }] } });
+  const r = await httpJSON({
+    hostname: 'generativelanguage.googleapis.com',
+    path: '/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  }, body);
+  const t = r?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (t) { addHist(cid, 'user', text); addHist(cid, 'assistant', t); }
+  return t;
 }
 
-// ─── Voice Transcription ──────────────────────────────────────────────────────
+async function callOpenAI(cid, text) {
+  const hist = getHist(cid);
+  const msgs = [
+    { role: 'system', content: 'Tu Sultan ka personal AI agent hai — Hinglish mein baat karo. Engineering, SMM, business sab samjho.' },
+    ...hist,
+    { role: 'user', content: text },
+  ];
+  const body = JSON.stringify({ model: 'gpt-4o-mini', messages: msgs, max_tokens: 1500 });
+  const r = await httpJSON({
+    hostname: 'api.openai.com', path: '/v1/chat/completions', method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + OPENAI, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  }, body);
+  const t = r?.choices?.[0]?.message?.content;
+  if (t) { addHist(cid, 'user', text); addHist(cid, 'assistant', t); }
+  return t;
+}
+
+async function callAI(cid, text) {
+  if (GROQ)   { try { const t = await callGroq(cid, text);   if (t) return { text: t, by: 'Groq ⚡' };   } catch(e) { log('[Groq]', e.message); } }
+  if (GEMINI) { try { const t = await callGemini(cid, text); if (t) return { text: t, by: 'Gemini 🔮' }; } catch(e) { log('[Gemini]', e.message); } }
+  if (OPENAI) { try { const t = await callOpenAI(cid, text); if (t) return { text: t, by: 'OpenAI 🧠' }; } catch(e) { log('[OpenAI]', e.message); } }
+  return null;
+}
+
+// ─── Voice Transcription ───────────────────────────────────────────────────────
 async function transcribeVoice(fileId) {
   if (!GROQ) return null;
   try {
-    const fi = await tg('getFile', { file_id: fileId });
-    if (!fi.ok) return null;
-    const audio = await httpDownload('https://api.telegram.org/file/bot' + TOKEN + '/' + fi.result.file_path);
-    const r = await tgMultipart({ model: 'whisper-large-v3', response_format: 'text' }, audio, 'voice.ogg', 'audio/ogg');
-    return (r._raw || r.text || '').trim() || null;
-  } catch(e) { log('[Whisper]', e.message); return null; }
+    const fRes = await tg('getFile', { file_id: fileId });
+    if (!fRes.ok) return null;
+    const audioBuffer = await httpDownload('https://api.telegram.org/file/bot' + TOKEN + '/' + fRes.result.file_path);
+    const boundary = '----FormBoundary' + Date.now();
+    const header = Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="voice.ogg"\r\nContent-Type: audio/ogg\r\n\r\n');
+    const modelPart = Buffer.from('\r\n--' + boundary + '\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3\r\n--' + boundary + '--\r\n');
+    const formData = Buffer.concat([header, audioBuffer, modelPart]);
+    const r = await httpJSON({
+      hostname: 'api.groq.com', path: '/openai/v1/audio/transcriptions', method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + GROQ, 'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Content-Length': formData.length }
+    }, formData);
+    return r?.text || null;
+  } catch(e) { log('[Voice]', e.message); return null; }
 }
 
-// ─── Keyboards ────────────────────────────────────────────────────────────────
+// ─── Keyboards ─────────────────────────────────────────────────────────────────
 const KB = {
   main: { inline_keyboard: [
-    [{ text: '💬 AI Chat',      callback_data: 'flow_ai'    }, { text: '🔍 Web Search',  callback_data: 'flow_search' }],
-    [{ text: '🏗️ Engineering', callback_data: 'menu_eng'   }, { text: '📊 SMM Panel',    callback_data: 'menu_smm'   }],
-    [{ text: '🧠 Memory',       callback_data: 'menu_mem'   }, { text: '🛠️ Tools',         callback_data: 'menu_tools' }],
-    [{ text: '📅 Daily Report', callback_data: 'cmd_report' }, { text: '🟢 Status',       callback_data: 'cmd_status' }],
+    [{ text: '💬 AI Chat',        callback_data: 'flow_ai' },    { text: '🔍 Web Search',   callback_data: 'flow_search' }],
+    [{ text: '🏗️ Engineering',    callback_data: 'menu_eng' },   { text: '📊 SMM Panel',    callback_data: 'menu_smm' }],
+    [{ text: '🧠 Memory',         callback_data: 'menu_mem' },   { text: '🛠️ Tools',        callback_data: 'menu_tools' }],
+    [{ text: '📊 Daily Report',   callback_data: 'cmd_report' }, { text: '🟢 Status',       callback_data: 'cmd_status' }],
+    [{ text: '📦 Build APK',      callback_data: 'cmd_apk' }],
   ]},
   eng: { inline_keyboard: [
-    [{ text: '📁 Projects',     callback_data: 'cmd_projects' }, { text: '🧱 Materials',   callback_data: 'menu_mat'   }],
-    [{ text: '📝 AI Quotation', callback_data: 'flow_quote'   }, { text: '💰 Profit Calc', callback_data: 'flow_profit'}],
-    [{ text: '⬅️ Main Menu',    callback_data: 'menu_main'    }],
+    [{ text: '📁 Projects',       callback_data: 'cmd_projects' }, { text: '🧱 Material Rates', callback_data: 'menu_mat' }],
+    [{ text: '📝 AI Quotation',   callback_data: 'flow_quote' },   { text: '💰 Profit Calc',    callback_data: 'flow_profit' }],
+    [{ text: '⬅️ Main',          callback_data: 'menu_main' }],
+  ]},
+  smm: { inline_keyboard: [
+    [{ text: '📊 SMM Dashboard',  callback_data: 'cmd_smm' },   { text: '➕ Add Order', callback_data: 'flow_order' }],
+    [{ text: '⬅️ Main',          callback_data: 'menu_main' }],
+  ]},
+  mem: { inline_keyboard: [
+    [{ text: '🧠 My Memories',    callback_data: 'cmd_memories' }, { text: '💾 Save Note', callback_data: 'flow_save' }],
+    [{ text: '🗑️ Clear All',     callback_data: 'cmd_clearmem' }, { text: '⬅️ Main',     callback_data: 'menu_main' }],
   ]},
   mat: { inline_keyboard: [
-    [{ text: '🏗️ Cement', callback_data: 'mat_cement' }, { text: '⚙️ Steel', callback_data: 'mat_steel' }],
-    [{ text: '🧱 Brick',  callback_data: 'mat_brick'  }, { text: '🪣 Sand',  callback_data: 'mat_sand'  }],
-    [{ text: '🎨 Paint',  callback_data: 'mat_paint'  }, { text: '🟫 Tile',  callback_data: 'mat_tile'  }],
-    [{ text: '⬅️ Back',   callback_data: 'menu_eng'   }],
+    [{ text: '🏗️ Cement',  callback_data: 'mat_cement' }, { text: '⚙️ Steel',  callback_data: 'mat_steel' }],
+    [{ text: '🧱 Brick',   callback_data: 'mat_brick' },  { text: '🪣 Sand',   callback_data: 'mat_sand' }],
+    [{ text: '🎨 Paint',   callback_data: 'mat_paint' },  { text: '🟫 Tile',   callback_data: 'mat_tile' }],
+    [{ text: '⬅️ Back',   callback_data: 'menu_eng' }],
   ]},
-  smm:   { inline_keyboard: [[{ text: '📊 Dashboard', callback_data: 'cmd_smm' }, { text: '➕ Add Order', callback_data: 'flow_order' }], [{ text: '⬅️ Main', callback_data: 'menu_main' }]] },
-  mem:   { inline_keyboard: [[{ text: '📋 All Memories', callback_data: 'cmd_memories' }, { text: '💾 Save Note', callback_data: 'flow_save' }], [{ text: '🗑️ Clear All', callback_data: 'cmd_clearmem' }, { text: '⬅️ Main', callback_data: 'menu_main' }]] },
   tools: { inline_keyboard: [
-    [{ text: '🧮 Calculator', callback_data: 'flow_calc' }, { text: '⏰ Reminder', callback_data: 'flow_remind' }],
-    [{ text: '🌤️ Weather', callback_data: 'flow_weather' }, { text: '🔍 Web Search', callback_data: 'flow_search' }],
+    [{ text: '🧮 Calculator',  callback_data: 'flow_calc' },    { text: '⏰ Reminder',    callback_data: 'flow_remind' }],
+    [{ text: '🌤️ Weather',    callback_data: 'flow_weather' }, { text: '🔍 Web Search',  callback_data: 'flow_search' }],
     [{ text: '💸 Log Expense', callback_data: 'flow_expense' }, { text: '💰 Budget Check', callback_data: 'flow_budget' }],
-    [{ text: '⬅️ Main', callback_data: 'menu_main' }],
+    [{ text: '📦 Build APK',   callback_data: 'cmd_apk' }],
+    [{ text: '⬅️ Main',       callback_data: 'menu_main' }],
   ]},
   back:  { inline_keyboard: [[{ text: '⬅️ Main Menu', callback_data: 'menu_main' }]] },
 };
@@ -260,7 +282,7 @@ const MENU_TEXTS = {
   eng:   '🏗️ *MA Engineering Panel*\n\nProjects, materials, quotations, profit — sab yahan!',
   smm:   '📊 *SMM Panel*\n\nOrders track karo, revenue dekho!',
   mem:   '🧠 *Memory — Firebase Sync*\n\n_App + Bot dono mein dikhta hai!_',
-  tools: '🛠️ *Tools — God Mode*\n\nCalculator, Reminders, Weather, Web Search!',
+  tools: '🛠️ *Tools — God Mode*\n\nCalculator, Reminders, Weather, Web Search, APK Build!',
 };
 
 const MATERIALS = {
@@ -278,6 +300,30 @@ const reminders = [];
 const send = (cid, text, kb) => tg('sendMessage', { chat_id: cid, text, parse_mode: 'Markdown', reply_markup: kb || KB.back });
 const typing = cid => tg('sendChatAction', { chat_id: cid, action: 'typing' }).catch(() => {});
 const edit   = (cid, mid, text, kb) => tg('editMessageText', { chat_id: cid, message_id: mid, text, parse_mode: 'Markdown', reply_markup: kb || KB.back });
+
+// ─── APK Build Handler ─────────────────────────────────────────────────────────
+async function handleAPKBuild(cid) {
+  await send(cid, '📦 *APK Build Trigger Ho Raha Hai...*\n\n_GitHub Actions pe build start hogi — thodi der ruko!_', KB.back);
+  try {
+    await triggerAPKBuild();
+    await new Promise(r => setTimeout(r, 3000));
+    const runs = await getLatestAPKBuild();
+    const latest = runs[0];
+    const statusIcon = latest?.status === 'in_progress' ? '🔄' : latest?.status === 'queued' ? '⏳' : '✅';
+    const msg =
+      '📦 *APK Build Triggered!*\n\n' +
+      statusIcon + ' Status: ' + (latest?.status || 'queued') + '\n' +
+      '🕐 Started: ' + (latest ? new Date(latest.created_at).toLocaleTimeString('en-PK', {timeZone:'Asia/Karachi'}) : 'abhi') + '\n\n' +
+      '⏱ ETA: ~10-15 minutes\n\n' +
+      '📊 *Track Build:*\n' +
+      'GitHub: https://github.com/' + GH_REPO + '/actions\n' +
+      'Expo: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds\n\n' +
+      '_Build complete hone pe notification aayega!_';
+    return send(cid, msg, KB.main);
+  } catch(e) {
+    return send(cid, '❌ APK build trigger fail: ' + e.message + '\n\nManually: https://github.com/' + GH_REPO + '/actions', KB.main);
+  }
+}
 
 // ─── Daily Report ─────────────────────────────────────────────────────────────
 async function dailyReport(cid) {
@@ -325,6 +371,9 @@ async function handleCB(query) {
   }
   if (data === 'menu_mat') return edit(cid, mid, '🧱 *Material Rates 2025*\n\nJo chahiye select karo:', KB.mat);
 
+  // APK Build
+  if (data === 'cmd_apk') return handleAPKBuild(cid);
+
   // Status
   if (data === 'cmd_status') {
     const up = process.uptime(), h = Math.floor(up/3600), m = Math.floor((up%3600)/60);
@@ -336,6 +385,7 @@ async function handleCB(query) {
       '🔥 Firebase: ' + FB_ID + ' ✅\n' +
       '🎙️ Voice: ' + (GROQ?'✅ Whisper':'❌ Need Groq') + '\n' +
       '🚂 Railway: 24/7 ✅\n' +
+      '📦 APK Build: ' + (GH_TOKEN?'✅ /apk command ready':'❌ GITHUB_ACCESS_TOKEN needed') + '\n' +
       '📦 Version: v6.0 God Mode',
       KB.main);
   }
@@ -419,6 +469,7 @@ async function handleText(msg) {
   }
   if (text === '/status') return send(cid, '🟢 Sultan Agent v6.0 Online | AI: ' + (GROQ?'Groq⚡':'') + (GEMINI?' Gemini🔮':'') + (OPENAI?' OpenAI🧠':''), KB.main);
   if (text === '/report') return dailyReport(cid);
+  if (text === '/apk' || text === '/buildapk') return handleAPKBuild(cid);
   if (text === '/clear') { clearHist(cid); return send(cid, '🧹 Chat history cleared!', KB.main); }
   if (text === '/clearmem') {
     const memory = await fbGet('users/' + FB_USER + '/memory');
@@ -445,7 +496,7 @@ async function handleText(msg) {
   }
 
   if (lower.startsWith('yaad rakh') || lower.startsWith('remember:') || lower.startsWith('/yaad ')) {
-    const note = text.replace(/^(yaad rakh|remember:|/yaads*)/i, '').trim();
+    const note = text.replace(/^(yaad rakh|remember:|\/yaad\s*)/i, '').trim();
     if (note) {
       fbSave('users/' + FB_USER + '/memory', String(Date.now()), { text: note, createdAt: Date.now(), tags: [], source: 'telegram' });
       fbInvalidate('users/' + FB_USER + '/memory');
@@ -629,6 +680,7 @@ async function main() {
   log('✅ @' + me.result.username + ' — Sultan Agent v6.0 God Mode ONLINE');
   log('🤖 AI: ' + (GROQ?'Groq ⚡ ':'') + (GEMINI?'Gemini 🔮 ':'') + (OPENAI?'OpenAI 🧠 ':'') + (!GROQ&&!GEMINI&&!OPENAI?'❌ NO AI KEY!':''));
   log('🔍 Web Search: ' + (SERPER?'✅ Enabled':'❌ Disabled'));
+  log('📦 APK Build: ' + (GH_TOKEN?'✅ /apk command ready':'⚠️ Add GITHUB_ACCESS_TOKEN'));
   log('🔥 Firebase: ' + FB_ID);
   scheduleDailyReport();
   if (ADMIN) {
@@ -639,8 +691,10 @@ async function main() {
         '🔍 Web Search: ' + (SERPER?'✅ ON':'❌ OFF') + '\n' +
         '🎙️ Voice: ' + (GROQ?'✅ Whisper':'❌ Need Groq') + '\n' +
         '🔥 Firebase: ' + FB_ID + ' ✅\n' +
-        '🚂 Railway: 24/7 Online\n\n' +
+        '🚂 Railway: 24/7 Online\n' +
+        '📦 APK: /apk command se build karo!\n\n' +
         '✨ *New in v6.0:*\n' +
+        '• /apk — Bot se APK build trigger karo!\n' +
         '• Web search (Serper API)\n' +
         '• Better memory commands\n' +
         '• Longer AI context (30 msgs)\n' +
