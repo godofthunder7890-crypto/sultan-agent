@@ -16,6 +16,11 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: |
           PROJECT_ID="1450a2ad-ffe6-478f-97ae-4cabdd0f5dea"
           SERVICE_ID="4e6ab161-cc6c-4945-81f6-b6242b4eb1f0"
@@ -29,21 +34,24 @@ jobs:
             echo "  Set $1 ✓"
           }
 
-          echo "Setting Railway environment variables..."
+          echo "Setting all Railway environment variables..."
           set_var "TELEGRAM_BOT_TOKEN" "$TELEGRAM_BOT_TOKEN"
           set_var "ADMIN_CHAT_ID" "$ADMIN_CHAT_ID"
+          set_var "GROQ_API_KEY" "$GROQ_API_KEY"
+          set_var "GEMINI_API_KEY" "$GEMINI_API_KEY"
+          set_var "OPENAI_API_KEY" "$OPENAI_API_KEY"
+          set_var "SERPER_API_KEY" "$SERPER_API_KEY"
+          set_var "ELEVENLABS_API_KEY" "$ELEVENLABS_API_KEY"
           set_var "FIREBASE_API_KEY" "AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s"
           set_var "FIREBASE_PROJECT_ID" "v11345"
           set_var "FIREBASE_USER_ID" "sultan"
-          set_var "AI_REPLY_ENABLED" "true"
-          echo ""
-          echo "Triggering Railway deployment..."
+
+          echo "Triggering Railway redeployment..."
           curl -s -X POST https://backboard.railway.app/graphql/v2 \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"query\":\"mutation { serviceInstanceDeploy(serviceId: \\\"$SERVICE_ID\\\", environmentId: \\\"$ENV_ID\\\") }\"}" > /dev/null
-          echo "✅ Bot deployed to Railway!"
-          echo "Monitor: https://railway.app/project/$PROJECT_ID"
+          echo "✅ Bot v6.0 deployed to Railway with all keys!"
 
   # ─── Job 2: Build Android APK ────────────────────────────────────────────────
   build-apk:
@@ -67,12 +75,12 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build APK
-        run: eas build --platform android --profile preview --non-interactive --no-wait
+      - name: Build APK (production profile)
+        run: eas build --platform android --profile production --non-interactive --no-wait
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Done
+      - name: Build started
         run: |
-          echo "APK build started on EAS!"
-          echo "Track: expo.dev/accounts/blcobra858/projects/sultan-agent/builds"
+          echo "✅ APK build submitted to EAS Cloud!"
+          echo "Track at: https://expo.dev/accounts/blcobra858/projects/sultan-agent/builds"
