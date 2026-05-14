@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -33,11 +34,19 @@ Web Search: When search results are provided, summarize them clearly and cite so
 
 Always respond in the same language Sultan uses (Urdu/English/mix). Be direct, powerful, and deliver real value every time.`;
 
-function MessageBubble({ msg }: { msg: Message }) {
+const QUICK_ACTIONS = [
+  { label: "Code likhwa", icon: "code-tags", prompt: "Mujhe ek ", color: "#38BDF8" },
+  { label: "SMM Analysis", icon: "chart-line", prompt: "SMM panel ke liye pricing strategy batao: ", color: "#818CF8" },
+  { label: "MA Engineering", icon: "domain", prompt: "MA Engineering ke liye ek project quotation banao: ", color: "#22C55E" },
+  { label: "Web Search", icon: "web", prompt: "/search ", color: "#F97316" },
+  { label: "Yaad rakh", icon: "brain", prompt: "yaad rakh ", color: "#EC4899" },
+  { label: "Business Idea", icon: "lightbulb-on", prompt: "Ek naya business idea suggest karo Pakistan mein: ", color: "#EAB308" },
+];
+
+function MessageBubble({ msg, onCopy }: { msg: Message; onCopy: (text: string) => void }) {
   const colors = useColors();
   const isUser = msg.role === "user";
   const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  // Fix: pass full model name to getProvider (no slicing that breaks Gemini 2.0 Flash)
   const provider = msg.model ? getProvider(msg.model) : "groq";
   const providerColor = provider === "openai" ? "#10A37F" : provider === "gemini" ? "#4285F4" : "#F97316";
 
@@ -48,50 +57,70 @@ function MessageBubble({ msg }: { msg: Message }) {
           <MaterialCommunityIcons name="robot-excited" size={18} color={colors.accent} />
         </View>
       )}
-      <View style={{ maxWidth: "78%" }}>
-        <View style={[styles.bubble, {
-          backgroundColor: isUser ? colors.primary : colors.card,
-          borderColor: isUser ? colors.primary : colors.border,
-        }]}>
+      <View style={{ maxWidth: "80%" }}>
+        <Pressable
+          onLongPress={() => {
+            onCopy(msg.content);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          }}
+          style={[
+            styles.bubble,
+            isUser ? styles.userBubble : styles.aiBubble,
+            {
+              backgroundColor: isUser ? colors.primary : colors.card,
+              borderColor: isUser ? colors.primary + "00" : colors.border,
+            },
+          ]}
+        >
           <Text style={[styles.bubbleText, { color: isUser ? colors.primaryForeground : colors.foreground }]}>
             {msg.content}
           </Text>
-        </View>
-        <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
+        </Pressable>
+        <View style={[styles.timeRow, { justifyContent: isUser ? "flex-end" : "flex-start" }]}>
           {!isUser && msg.model && (
-            <Text style={{ color: providerColor }}>{msg.model} · </Text>
+            <Text style={[styles.modelTag, { color: providerColor }]}>{msg.model}</Text>
           )}
-          {time}
-        </Text>
+          <Text style={[styles.timeText, { color: colors.mutedForeground }]}>{time}</Text>
+          {!isUser && (
+            <Pressable onPress={() => { onCopy(msg.content); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={styles.copyBtn}>
+              <Ionicons name="copy-outline" size={12} color={colors.mutedForeground} />
+            </Pressable>
+          )}
+        </View>
       </View>
+      {isUser && (
+        <View style={[styles.avatar, { backgroundColor: colors.primary + "33" }]}>
+          <MaterialCommunityIcons name="account" size={18} color={colors.primary} />
+        </View>
+      )}
     </View>
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ msg }: { msg: string }) {
   const colors = useColors();
   return (
     <View style={styles.bubbleRow}>
       <View style={[styles.avatar, { backgroundColor: colors.accent + "33" }]}>
         <MaterialCommunityIcons name="robot-excited" size={18} color={colors.accent} />
       </View>
-      <View style={[styles.bubble, styles.typingBubble, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[styles.bubble, styles.aiBubble, styles.typingBubble, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <ActivityIndicator size="small" color={colors.accent} />
-        <Text style={[styles.typingText, { color: colors.mutedForeground }]}>Thinking...</Text>
+        <Text style={[styles.typingText, { color: colors.mutedForeground }]}>{msg}</Text>
       </View>
     </View>
   );
 }
 
-function parseCommand(text: string): { type: 'memory' | 'search' | 'normal'; value: string } {
+function parseCommand(text: string): { type: "memory" | "search" | "normal"; value: string } {
   const lower = text.toLowerCase().trim();
   const memPrefixes = ["yaad rakh ", "remember ", "save this: ", "note karo "];
   for (const p of memPrefixes) {
-    if (lower.startsWith(p)) return { type: 'memory', value: text.slice(p.length).trim() };
+    if (lower.startsWith(p)) return { type: "memory", value: text.slice(p.length).trim() };
   }
-  if (lower.startsWith("/search ")) return { type: 'search', value: text.slice(8).trim() };
-  if (lower.startsWith("search karo ")) return { type: 'search', value: text.slice(12).trim() };
-  return { type: 'normal', value: text };
+  if (lower.startsWith("/search ")) return { type: "search", value: text.slice(8).trim() };
+  if (lower.startsWith("search karo ")) return { type: "search", value: text.slice(12).trim() };
+  return { type: "normal", value: text };
 }
 
 export default function ChatScreen() {
@@ -101,13 +130,26 @@ export default function ChatScreen() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("Thinking...");
+  const [copied, setCopied] = useState(false);
   const flatRef = useRef<FlatList>(null);
 
-  const currentModel = MODELS.find(m => m.id === settings.selectedModel) ?? MODELS[0];
+  const currentModel = MODELS.find((m) => m.id === settings.selectedModel) ?? MODELS[0];
   const provider = currentModel.provider;
   const providerColor = provider === "OpenAI" ? "#10A37F" : provider === "Gemini" ? "#4285F4" : "#F97316";
 
   const displayMessages = [...messages].reverse();
+  const showQuickActions = messages.length === 0 && !loading;
+
+  function handleCopy(text: string) {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    Alert.alert("Copied!", "Message clipboard mein copy ho gaya.");
+  }
+
+  function handleQuickAction(prompt: string) {
+    setInput(prompt);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
 
   async function handleSend() {
     const text = input.trim();
@@ -118,7 +160,7 @@ export default function ChatScreen() {
 
     const cmd = parseCommand(text);
 
-    if (cmd.type === 'memory') {
+    if (cmd.type === "memory") {
       addMessage({ role: "user", content: text });
       setLoading(true);
       setLoadingMsg("Yaad kar raha hoon...");
@@ -132,7 +174,7 @@ export default function ChatScreen() {
       return;
     }
 
-    if (cmd.type === 'search') {
+    if (cmd.type === "search") {
       addMessage({ role: "user", content: text });
       setLoading(true);
       setLoadingMsg("Web search kar raha hoon...");
@@ -153,17 +195,18 @@ export default function ChatScreen() {
       return;
     }
 
-    const activeKey = provider === "OpenAI" ? settings.openaiKey
-      : provider === "Gemini" ? settings.geminiKey
-      : settings.groqKey;
+    const activeKey =
+      provider === "OpenAI" ? settings.openaiKey : provider === "Gemini" ? settings.geminiKey : settings.groqKey;
 
     if (!activeKey) {
       Alert.alert(
         `${provider} API Key Missing`,
         `Settings tab mein apna ${provider} API key daalo.\n${
-          provider === "Groq" ? "groq.com/keys — bilkul free hai" :
-          provider === "OpenAI" ? "platform.openai.com/api-keys" :
-          "aistudio.google.com/app/apikey"
+          provider === "Groq"
+            ? "groq.com/keys — bilkul free hai"
+            : provider === "OpenAI"
+              ? "platform.openai.com/api-keys"
+              : "aistudio.google.com/app/apikey"
         }`,
         [{ text: "OK" }],
       );
@@ -175,7 +218,7 @@ export default function ChatScreen() {
     setLoadingMsg("Thinking...");
 
     try {
-      const history = messages.slice(-20).map(m => ({ role: m.role, content: m.content }));
+      const history = messages.slice(-20).map((m) => ({ role: m.role, content: m.content }));
       const reply = await callAI(
         [...history, { role: "user", content: text }],
         settings.selectedModel,
@@ -193,103 +236,156 @@ export default function ChatScreen() {
   function handleClear() {
     Alert.alert("Clear Chat", "Saare messages delete honge?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Clear", style: "destructive", onPress: () => {
-        clearMessages();
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }},
+      {
+        text: "Clear",
+        style: "destructive",
+        onPress: () => {
+          clearMessages();
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        },
+      },
     ]);
   }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, {
-        paddingTop: insets.top + (Platform.OS === "web" ? 67 : 12),
-        backgroundColor: colors.background,
-        borderBottomColor: colors.border,
-      }]}>
+      {/* Header */}
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 12),
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <View style={styles.headerLeft}>
-          <MaterialCommunityIcons name="robot-excited" size={26} color={colors.accent} />
+          <View style={[styles.logoCircle, { backgroundColor: colors.accent + "22" }]}>
+            <MaterialCommunityIcons name="robot-excited" size={22} color={colors.accent} />
+          </View>
           <View>
             <Text style={[styles.headerTitle, { color: colors.foreground }]}>Sultan Agent</Text>
             <View style={styles.modelRow}>
               <View style={[styles.providerDot, { backgroundColor: providerColor }]} />
               <Text style={[styles.headerSubtitle, { color: colors.mutedForeground }]}>
-                {currentModel.name} · {currentModel.provider}
+                {currentModel.name}
               </Text>
               {firebaseReady && (
-                <View style={[styles.fbDot, { backgroundColor: "#22C55E" }]} />
+                <>
+                  <Text style={[styles.headerSubtitle, { color: colors.mutedForeground }]}> · </Text>
+                  <View style={[styles.fbBadge, { backgroundColor: "#22C55E20" }]}>
+                    <View style={[styles.fbDot]} />
+                    <Text style={styles.fbText}>Firebase</Text>
+                  </View>
+                </>
               )}
             </View>
           </View>
         </View>
         <View style={styles.headerActions}>
-          <Pressable onPress={handleClear} style={styles.iconBtn}>
-            <Ionicons name="trash-outline" size={20} color={colors.mutedForeground} />
+          <Pressable onPress={handleClear} style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Ionicons name="trash-outline" size={18} color={colors.mutedForeground} />
           </Pressable>
         </View>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        {/* Messages */}
         <FlatList
           ref={flatRef}
           data={displayMessages}
           inverted
-          keyExtractor={m => m.id}
-          renderItem={({ item }) => <MessageBubble msg={item} />}
-          ListHeaderComponent={loading ? (
-            <View style={styles.bubbleRow}>
-              <View style={[styles.avatar, { backgroundColor: colors.accent + "33" }]}>
-                <MaterialCommunityIcons name="robot-excited" size={18} color={colors.accent} />
-              </View>
-              <View style={[styles.bubble, styles.typingBubble, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <ActivityIndicator size="small" color={colors.accent} />
-                <Text style={[styles.typingText, { color: colors.mutedForeground }]}>{loadingMsg}</Text>
-              </View>
-            </View>
-          ) : null}
+          keyExtractor={(m) => m.id}
+          renderItem={({ item }) => <MessageBubble msg={item} onCopy={handleCopy} />}
+          ListHeaderComponent={loading ? <TypingIndicator msg={loadingMsg} /> : null}
           contentContainerStyle={[styles.listContent, { paddingBottom: 8 }]}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="robot-excited-outline" size={64} color={colors.accent + "55"} />
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Sultan Agent Ready</Text>
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+              <View style={[styles.emptyLogoWrap, { backgroundColor: colors.accent + "15" }]}>
+                <MaterialCommunityIcons name="robot-excited-outline" size={52} color={colors.accent} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Sultan Agent</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
                 Code, engineering, SMM, business — sab kuch poocho
-              </Text>
-              <Text style={[styles.emptyHint, { color: colors.mutedForeground, marginTop: 12 }]}>
-                {"💡"} "Yaad rakh [baat]" — Firebase memory mein save{"
-"}
-                {"🔍"} "/search [query]" — Web search karo
               </Text>
             </View>
           }
           showsVerticalScrollIndicator={false}
         />
 
-        <View style={[styles.inputBar, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + 8 }]}>
-          <TextInput
-            style={[styles.input, {
-              backgroundColor: colors.card,
-              color: colors.foreground,
-              borderColor: colors.border,
-            }]}
-            value={input}
-            onChangeText={setInput}
-            placeholder={`Message Sultan Agent...`}
-            placeholderTextColor={colors.mutedForeground}
-            multiline
-            maxLength={4000}
-            onSubmitEditing={Platform.OS === "web" ? handleSend : undefined}
-            blurOnSubmit={Platform.OS === "web"}
-          />
-          <Pressable
-            onPress={handleSend}
-            disabled={loading || !input.trim()}
-            style={[styles.sendBtn, {
-              backgroundColor: (loading || !input.trim()) ? colors.border : colors.primary,
-            }]}
-          >
-            <Ionicons name="send" size={18} color={colors.primaryForeground} />
-          </Pressable>
+        {/* Quick Action Buttons */}
+        {showQuickActions && (
+          <View style={styles.quickActionsWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickActionsScroll}
+            >
+              {QUICK_ACTIONS.map((action) => (
+                <Pressable
+                  key={action.label}
+                  onPress={() => handleQuickAction(action.prompt)}
+                  style={({ pressed }) => [
+                    styles.quickBtn,
+                    {
+                      backgroundColor: action.color + "15",
+                      borderColor: action.color + "40",
+                      opacity: pressed ? 0.75 : 1,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons name={action.icon as never} size={15} color={action.color} />
+                  <Text style={[styles.quickBtnText, { color: action.color }]}>{action.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Input Bar */}
+        <View
+          style={[
+            styles.inputBar,
+            {
+              backgroundColor: colors.background,
+              borderTopColor: colors.border,
+              paddingBottom: insets.bottom + (Platform.OS === "web" ? 8 : 8),
+            },
+          ]}
+        >
+          <View style={[styles.inputWrapper, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <TextInput
+              style={[styles.input, { color: colors.foreground }]}
+              value={input}
+              onChangeText={setInput}
+              placeholder="Sultan Agent se poocho..."
+              placeholderTextColor={colors.mutedForeground}
+              multiline
+              maxLength={4000}
+              onSubmitEditing={Platform.OS === "web" ? handleSend : undefined}
+              blurOnSubmit={Platform.OS === "web"}
+            />
+            <Pressable
+              onPress={handleSend}
+              disabled={loading || !input.trim()}
+              style={[
+                styles.sendBtn,
+                {
+                  backgroundColor: loading || !input.trim() ? colors.border : colors.primary,
+                },
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.primaryForeground} />
+              ) : (
+                <Ionicons name="arrow-up" size={18} color={colors.primaryForeground} />
+              )}
+            </Pressable>
+          </View>
+          <Text style={[styles.inputHint, { color: colors.mutedForeground }]}>
+            Long press message to copy · /search [query] · yaad rakh [baat]
+          </Text>
         </View>
       </KeyboardAvoidingView>
     </View>
@@ -299,30 +395,70 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  modelRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  logoCircle: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  modelRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
   providerDot: { width: 6, height: 6, borderRadius: 3 },
-  fbDot: { width: 6, height: 6, borderRadius: 3, marginLeft: 4 },
-  headerSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  headerSubtitle: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  fbBadge: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 20, paddingHorizontal: 6, paddingVertical: 1 },
+  fbDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#22C55E" },
+  fbText: { fontSize: 9, fontFamily: "Inter_600SemiBold", color: "#22C55E" },
   headerActions: { flexDirection: "row", gap: 8 },
-  iconBtn: { padding: 8 },
-  listContent: { paddingHorizontal: 12, paddingTop: 12, gap: 8 },
-  bubbleRow: { flexDirection: "row", alignItems: "flex-end", gap: 8, marginBottom: 8 },
-  avatar: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, borderWidth: StyleSheet.hairlineWidth },
-  typingBubble: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12 },
+  iconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth },
+  listContent: { paddingHorizontal: 12, paddingTop: 12, gap: 4 },
+  bubbleRow: { flexDirection: "row", alignItems: "flex-end", gap: 8, marginBottom: 6 },
+  avatar: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  bubble: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: StyleSheet.hairlineWidth },
+  userBubble: { borderBottomRightRadius: 4 },
+  aiBubble: { borderBottomLeftRadius: 4 },
+  typingBubble: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12, paddingHorizontal: 16 },
   typingText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   bubbleText: { fontSize: 15, fontFamily: "Inter_400Regular", lineHeight: 22 },
-  timeText: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 4, marginHorizontal: 4 },
-  emptyState: { alignItems: "center", paddingTop: 80, gap: 10 },
-  emptyTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 40 },
-  emptyHint: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 32, lineHeight: 22 },
-  inputBar: { flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 12, paddingTop: 8, gap: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  input: { flex: 1, borderRadius: 20, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, fontFamily: "Inter_400Regular", maxHeight: 120 },
-  sendBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  timeRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3, marginHorizontal: 4 },
+  modelTag: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  timeText: { fontSize: 10, fontFamily: "Inter_400Regular" },
+  copyBtn: { padding: 2 },
+  emptyState: { alignItems: "center", paddingTop: 60, gap: 12, paddingBottom: 20 },
+  emptyLogoWrap: { width: 90, height: 90, borderRadius: 45, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  emptyTitle: { fontSize: 24, fontFamily: "Inter_700Bold" },
+  emptySubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 40, lineHeight: 20 },
+  quickActionsWrap: { paddingVertical: 8 },
+  quickActionsScroll: { paddingHorizontal: 12, gap: 8 },
+  quickBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  quickBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  inputBar: { paddingHorizontal: 12, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, gap: 6 },
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    maxHeight: 120,
+    paddingVertical: 6,
+  },
+  sendBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", marginBottom: 2 },
+  inputHint: { fontSize: 10, fontFamily: "Inter_400Regular", textAlign: "center", paddingBottom: 2 },
 });
