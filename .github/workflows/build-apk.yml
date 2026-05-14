@@ -14,15 +14,16 @@ jobs:
       - name: Push env vars to Railway (with retry)
         continue-on-error: true
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GROQ_KEY: ${{ secrets.GROQ_API_KEY }}
-          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
-          SERPER_KEY: ${{ secrets.SERPER_API_KEY }}
-          ELEVEN_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RAILWAY_TOKEN:   ${{ secrets.RAILWAY_TOKEN }}
+          TG_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          GROQ_KEY:        ${{ secrets.GROQ_API_KEY }}
+          GEMINI_KEY:      ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          SERPER_KEY:      ${{ secrets.SERPER_API_KEY }}
+          ELEVEN_KEY:      ${{ secrets.ELEVENLABS_API_KEY }}
+          EXPO_KEY:        ${{ secrets.EXPO_TOKEN }}
+          GH_PAT:          ${{ secrets.GITHUB_TOKEN }}
         run: |
           node << 'NODEJS'
           const https = require('https');
@@ -32,75 +33,53 @@ jobs:
           const ENV_ID     = 'b591b4fe-3105-4155-aa48-aed73d794e5b';
 
           const vars = {
-            TELEGRAM_BOT_TOKEN:    process.env.TG_BOT_TOKEN,
-            ADMIN_CHAT_ID:         process.env.TG_CHAT_ID,
-            GROQ_API_KEY:          process.env.GROQ_KEY,
-            GEMINI_API_KEY:        process.env.GEMINI_KEY,
-            OPENAI_API_KEY:        process.env.OPENAI_KEY,
-            SERPER_API_KEY:        process.env.SERPER_KEY,
-            ELEVENLABS_API_KEY:    process.env.ELEVEN_KEY,
-            GITHUB_ACCESS_TOKEN:   process.env.GH_TOKEN,
-            FIREBASE_API_KEY:      'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
-            FIREBASE_PROJECT_ID:   'v11345',
-            FIREBASE_USER_ID:      'sultan',
+            TELEGRAM_BOT_TOKEN:   process.env.TG_BOT_TOKEN,
+            ADMIN_CHAT_ID:        process.env.TG_CHAT_ID,
+            GROQ_API_KEY:         process.env.GROQ_KEY,
+            GEMINI_API_KEY:       process.env.GEMINI_KEY,
+            OPENAI_API_KEY:       process.env.OPENAI_KEY,
+            SERPER_API_KEY:       process.env.SERPER_KEY,
+            ELEVENLABS_API_KEY:   process.env.ELEVEN_KEY,
+            EXPO_TOKEN:           process.env.EXPO_KEY,
+            GITHUB_ACCESS_TOKEN:  process.env.GH_PAT,
+            FIREBASE_API_KEY:     'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
+            FIREBASE_PROJECT_ID:  'v11345',
+            FIREBASE_USER_ID:     'sultan',
           };
 
           function gql(query) {
-            return new Promise((res, rej) => {
+            return new Promise((res) => {
               const body = JSON.stringify({ query });
               const req = https.request({
                 hostname: 'backboard.railway.app',
-                path: '/graphql/v2', method: 'POST',
-                timeout: 30000,
-                headers: {
-                  'Authorization': 'Bearer ' + RAILWAY_TOKEN,
-                  'Content-Type': 'application/json',
-                  'Content-Length': Buffer.byteLength(body),
-                }
-              }, r => {
-                let d = '';
-                r.on('data', c => d += c);
-                r.on('end', () => {
-                  try { res(JSON.parse(d)); }
-                  catch { res({ _error: d.slice(0, 100) }); }
-                });
-              });
-              req.on('error', e => res({ _error: e.message }));
-              req.on('timeout', () => { req.destroy(); res({ _error: 'timeout' }); });
+                path: '/graphql/v2', method: 'POST', timeout: 30000,
+                headers: { 'Authorization': 'Bearer ' + RAILWAY_TOKEN, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+              }, r => { let d=''; r.on('data',c=>d+=c); r.on('end',()=>{ try{res(JSON.parse(d));}catch{res({_error:d.slice(0,100)});} }); });
+              req.on('error', e=>res({_error:e.message}));
+              req.on('timeout', ()=>{req.destroy();res({_error:'timeout'});});
               req.end(body);
             });
           }
 
-          async function setVar(name, value, retry = 3) {
+          async function setVar(name, value, retry=3) {
             if (!value) { console.log('SKIP:', name); return; }
-            const safe = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-            const q = 'mutation { variableUpsert(input: { projectId: "' + PROJECT_ID + '", environmentId: "' + ENV_ID + '", serviceId: "' + SERVICE_ID + '", name: "' + name + '", value: "' + safe + '" }) }';
-            for (let i = 0; i < retry; i++) {
+            const safe = value.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
+            const q = 'mutation { variableUpsert(input: { projectId:"'+PROJECT_ID+'", environmentId:"'+ENV_ID+'", serviceId:"'+SERVICE_ID+'", name:"'+name+'", value:"'+safe+'" }) }';
+            for (let i=0; i<retry; i++) {
               const r = await gql(q);
-              if (r._error) {
-                console.log('RETRY', i+1, name, '-', r._error);
-                await new Promise(r => setTimeout(r, 3000));
-              } else if (r.errors) {
-                console.log('FAIL:', name, '-', r.errors[0]?.message);
-                return;
-              } else {
-                console.log('OK:', name);
-                return;
-              }
+              if (r._error) { console.log('RETRY',i+1,name,'-',r._error); await new Promise(r=>setTimeout(r,3000)); }
+              else if (r.errors) { console.log('FAIL:',name,'-',r.errors[0]?.message); return; }
+              else { console.log('OK:',name); return; }
             }
-            console.log('GIVE UP:', name);
+            console.log('GIVE UP:',name);
           }
 
-          (async () => {
-            for (const [name, value] of Object.entries(vars)) {
-              await setVar(name, value);
-            }
+          (async()=>{
+            for (const [name, value] of Object.entries(vars)) await setVar(name, value);
             console.log('All vars done. Triggering redeploy...');
-            const deploy = await gql('mutation { serviceInstanceRedeploy(environmentId: "' + ENV_ID + '", serviceId: "' + SERVICE_ID + '") }');
-            if (deploy._error) console.log('Redeploy error:', deploy._error);
-            else if (deploy.errors) console.log('Redeploy error:', deploy.errors[0]?.message);
-            else console.log('Railway redeploy triggered!');
-          })().catch(e => console.log('Fatal:', e.message));
+            const dep = await gql('mutation { serviceInstanceRedeploy(environmentId:"'+ENV_ID+'", serviceId:"'+SERVICE_ID+'") }');
+            console.log(dep.errors ? 'Redeploy err: '+dep.errors[0]?.message : 'Railway redeploy triggered!');
+          })().catch(e=>console.log('Fatal:',e.message));
           NODEJS
 
       - name: Telegram - Bot Deployed
@@ -112,7 +91,7 @@ jobs:
           curl -s -o /dev/null --max-time 10 \
             -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
             -d "chat_id=${CID}" \
-            --data-urlencode "text=Sultan Agent v6.0 Railway pe deploy ho raha hai! Env vars set ho gaye. Bot thodi der mein online aayega!"
+            --data-urlencode "text=Sultan Agent v6.0 Railway pe deploy ho gaya! Sab env vars set. APK auto-download bhi active!"
           echo "Telegram notified"
 
   # ─── Job 2: Build Android APK ────────────────────────────────────────────────
@@ -164,7 +143,7 @@ jobs:
           RESULT: ${{ job.status }}
         run: |
           if [ "$RESULT" = "success" ]; then
-            MSG="APK build EAS cloud pe submit ho gaya! 10-15 min mein tayar hoga. Track: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds"
+            MSG="APK build EAS cloud pe submit! 10-15 min mein tayar hogi aur bot seedha file bhejega! Track: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds"
           else
             MSG="APK build fail hua. GitHub Actions dekho: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
           fi
