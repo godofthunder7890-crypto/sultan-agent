@@ -1,35 +1,32 @@
-// Sultan Agent Bot Server v5.0 — 24/7 Railway Edition
-// ChatGPT + Gemini + Replit Agent jaisi AI, Voice Messages, App+Bot Firebase Sync
+// Sultan Agent Bot Server v5.1 — Speed Edition
+// Fix: Instant button response + Non-blocking Firebase + Fast polling
 
 const https  = require('https');
 const http   = require('http');
 const { Buffer } = require('buffer');
 
-// ─── Config ──────────────────────────────────────────────────────────────────
 const TOKEN   = process.env.TELEGRAM_BOT_TOKEN;
 const GROQ    = process.env.GROQ_API_KEY    || '';
 const GEMINI  = process.env.GEMINI_API_KEY  || '';
 const OPENAI  = process.env.OPENAI_API_KEY  || '';
 const ADMIN   = process.env.ADMIN_CHAT_ID   || '';
 const PORT    = parseInt(process.env.PORT   || '3000');
-const WEATHER = process.env.WEATHER_API_KEY || '';
-// Firebase — same project as mobile app
 const FB_KEY  = process.env.FIREBASE_API_KEY    || 'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s';
 const FB_ID   = process.env.FIREBASE_PROJECT_ID || 'v11345';
 const FB_USER = process.env.FIREBASE_USER_ID    || 'sultan';
 
-// ─── Health Check Server (Railway 24/7 alive) ─────────────────────────────────
+// ─── Health Check ─────────────────────────────────────────────────────────────
 http.createServer((_, res) => {
   const up = process.uptime();
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
-    status: 'online', bot: 'Sultan Agent v5.0',
+    status: 'online', bot: 'Sultan Agent v5.1',
     uptime: `${Math.floor(up/3600)}h ${Math.floor((up%3600)/60)}m`,
     ai: GROQ ? 'Groq' : GEMINI ? 'Gemini' : OPENAI ? 'OpenAI' : 'none',
     firebase: FB_KEY ? `connected (${FB_ID})` : 'not set',
     voice: GROQ ? 'Whisper enabled' : 'need Groq key',
   }));
-}).listen(PORT, () => log('Health check server on port', PORT));
+}).listen(PORT, () => log('Health check on port', PORT));
 
 function log(...a) { console.log(new Date().toISOString().slice(11,19), ...a); }
 
@@ -69,9 +66,8 @@ async function tg(method, body) {
 async function tgMultipart(fields, fileBuffer, filename, mimetype) {
   const boundary = 'SultanBound' + Date.now();
   const parts = [];
-  for (const [k, v] of Object.entries(fields)) {
+  for (const [k, v] of Object.entries(fields))
     parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`);
-  }
   parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimetype}\r\n\r\n`);
   const bodyBuf = Buffer.concat([Buffer.from(parts.join('')), fileBuffer, Buffer.from(`\r\n--${boundary}--\r\n`)]);
   return httpJSON({
@@ -97,55 +93,56 @@ function fromFS(doc) {
     o[k] = v.stringValue ?? v.integerValue ?? v.booleanValue ?? v.doubleValue ?? '';
   return o;
 }
-async function fbSave(col, id, data) {
-  try {
-    const body = JSON.stringify(toFS(data));
-    const keys = Object.keys(data).map(k => 'updateMask.fieldPaths=' + k).join('&');
-    return httpJSON({
-      hostname: 'firestore.googleapis.com',
-      path: `/v1/projects/${FB_ID}/databases/(default)/documents/${col}/${id}?key=${FB_KEY}&${keys}`,
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-    }, body);
-  } catch {}
+// Non-blocking save — fire and forget
+function fbSave(col, id, data) {
+  const body = JSON.stringify(toFS(data));
+  const keys = Object.keys(data).map(k => 'updateMask.fieldPaths=' + k).join('&');
+  httpJSON({
+    hostname: 'firestore.googleapis.com',
+    path: `/v1/projects/${FB_ID}/databases/(default)/documents/${col}/${id}?key=${FB_KEY}&${keys}`,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  }, body).catch(() => {});
 }
+// Cached Firebase read — 30 sec TTL per collection
+const fbCache = new Map();
 async function fbGet(col) {
+  const now = Date.now();
+  const cached = fbCache.get(col);
+  if (cached && now - cached.ts < 30000) return cached.data;
   try {
     const r = await httpJSON({
       hostname: 'firestore.googleapis.com',
-      path: `/v1/projects/${FB_ID}/databases/(default)/documents/${col}?key=${FB_KEY}`,
+      path: `/v1/projects/${FB_ID}/databases/(default)/documents/${col}?key=${FB_KEY}&pageSize=50`,
       method: 'GET'
     });
-    return (r.documents || []).map(fromFS);
-  } catch { return []; }
+    const data = (r.documents || []).map(fromFS);
+    fbCache.set(col, { data, ts: now });
+    return data;
+  } catch { return cached?.data || []; }
 }
+function fbInvalidate(col) { fbCache.delete(col); }
 
 // ─── AI System ────────────────────────────────────────────────────────────────
-const AI_SYSTEM = `You are Sultan Agent v5.0 — an ultra-powerful personal AI for Sultan, CEO of MA Engineering, Pakistan.
-
+const AI_SYSTEM = `You are Sultan Agent v5.1 — ultra-powerful personal AI for Sultan, CEO of MA Engineering, Pakistan.
 You are JARVIX — Sultan ka personal AI — like ChatGPT + Gemini + Replit Agent combined:
 - Expert in civil/structural engineering, BOQ, project quotations, Pakistan construction (PKR rates)
-- SMM panel expert (Instagram/YouTube followers, views, pricing strategies, profit analysis)
+- SMM panel expert (Instagram/YouTube followers, views, pricing, profit analysis)
 - Full-stack coding expert (write, debug, review, explain any language)
 - Business strategy, profit calculations, market analysis, investment advice
 - Personal assistant (research, notes, reminders, planning)
-
-Personality: Direct, confident, expert. Like JARVIS for Tony Stark — but warm and friendly.
-Language: ALWAYS reply in the EXACT same language Sultan uses:
-  - Urdu → Reply in Urdu
-  - English → Reply in English
-  - Hinglish/Roman Urdu → Reply in same mix
-Format: Use proper Markdown. Code in code blocks. Use bullet points for lists.
-Be genuinely helpful — not robotic. Celebrate wins. Keep it real.`;
+Personality: Direct, confident, expert. Like JARVIS — warm and friendly.
+Language: ALWAYS reply in the EXACT same language Sultan uses (Urdu/English/Hinglish).
+Format: Use Markdown. Code in code blocks. Bullet points for lists.`;
 
 const chatHistory = new Map();
-function addHist(chatId, role, content) {
-  if (!chatHistory.has(chatId)) chatHistory.set(chatId, []);
-  const h = chatHistory.get(chatId);
+function addHist(cid, role, content) {
+  if (!chatHistory.has(cid)) chatHistory.set(cid, []);
+  const h = chatHistory.get(cid);
   h.push({ role, content });
   if (h.length > 24) h.splice(0, h.length - 24);
 }
-function getHist(chatId) { return chatHistory.get(chatId) || []; }
+function getHist(cid) { return chatHistory.get(cid) || []; }
 
 async function aiGroq(msgs) {
   const body = JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: AI_SYSTEM }, ...msgs], max_tokens: 1500, temperature: 0.8 });
@@ -167,24 +164,24 @@ async function aiOpenAI(msgs) {
   throw new Error('OpenAI failed');
 }
 
-async function callAI(chatId, userText) {
-  addHist(chatId, 'user', userText);
-  const msgs = getHist(chatId);
+async function callAI(cid, userText) {
+  addHist(cid, 'user', userText);
+  const msgs = getHist(cid);
   let result = null;
-  if (GROQ)            { try { result = await aiGroq(msgs);   } catch(e) { log('[Groq]',   e.message); } }
+  if (GROQ)   { try { result = await aiGroq(msgs);   } catch(e) { log('[Groq]', e.message); } }
   if (!result && GEMINI) { try { result = await aiGemini(msgs); } catch(e) { log('[Gemini]', e.message); } }
   if (!result && OPENAI) { try { result = await aiOpenAI(msgs); } catch(e) { log('[OpenAI]', e.message); } }
   if (result) {
-    addHist(chatId, 'assistant', result.text);
+    addHist(cid, 'assistant', result.text);
     fbSave(`users/${FB_USER}/telegram`, String(Date.now()), {
       type: 'ai_reply', text: result.text.slice(0, 400), provider: result.by,
-      chatId: String(chatId), timestamp: Date.now(), role: 'assistant'
-    }).catch(() => {});
+      chatId: String(cid), timestamp: Date.now(), role: 'assistant'
+    });
   }
   return result;
 }
 
-// ─── Voice Transcription (Groq Whisper) ──────────────────────────────────────
+// ─── Voice ────────────────────────────────────────────────────────────────────
 async function transcribeVoice(fileId) {
   if (!GROQ) return null;
   try {
@@ -196,7 +193,7 @@ async function transcribeVoice(fileId) {
   } catch(e) { log('[Whisper]', e.message); return null; }
 }
 
-// ─── Keyboards & Menus ────────────────────────────────────────────────────────
+// ─── Keyboards ────────────────────────────────────────────────────────────────
 const KB = {
   main: { inline_keyboard: [
     [{ text: '💬 AI Chat',      callback_data: 'flow_ai'    }, { text: '🏗️ Engineering', callback_data: 'menu_eng'   }],
@@ -205,10 +202,8 @@ const KB = {
     [{ text: '📅 Daily Report', callback_data: 'cmd_report' }, { text: '🟢 Status',       callback_data: 'cmd_status' }],
   ]},
   eng: { inline_keyboard: [
-    [{ text: '📁 Projects',      callback_data: 'cmd_projects' }],
-    [{ text: '🧱 Material Cost', callback_data: 'menu_mat'     }],
-    [{ text: '📝 AI Quotation',  callback_data: 'flow_quote'   }],
-    [{ text: '💰 Profit Calc',   callback_data: 'flow_profit'  }],
+    [{ text: '📁 Projects',      callback_data: 'cmd_projects' }, { text: '🧱 Materials',   callback_data: 'menu_mat'   }],
+    [{ text: '📝 AI Quotation',  callback_data: 'flow_quote'   }, { text: '💰 Profit Calc', callback_data: 'flow_profit'}],
     [{ text: '⬅️ Main Menu',     callback_data: 'menu_main'    }],
   ]},
   mat: { inline_keyboard: [
@@ -217,25 +212,21 @@ const KB = {
     [{ text: '🎨 Paint',  callback_data: 'mat_paint'  }, { text: '🟫 Tile',  callback_data: 'mat_tile'  }],
     [{ text: '⬅️ Back',   callback_data: 'menu_eng'   }],
   ]},
-  smm:   { inline_keyboard: [[{ text: '📊 Dashboard', callback_data: 'cmd_smm' }], [{ text: '➕ Add Order', callback_data: 'flow_order' }], [{ text: '⬅️ Main', callback_data: 'menu_main' }]] },
-  fin:   { inline_keyboard: [[{ text: '💸 Log Expense', callback_data: 'flow_expense' }], [{ text: '💰 Budget Check', callback_data: 'flow_budget' }], [{ text: '⬅️ Main', callback_data: 'menu_main' }]] },
-  mem:   { inline_keyboard: [[{ text: '🧠 See Memories', callback_data: 'cmd_memories' }], [{ text: '💾 Save Something', callback_data: 'flow_save' }], [{ text: '⬅️ Main', callback_data: 'menu_main' }]] },
+  smm:   { inline_keyboard: [[{ text: '📊 Dashboard', callback_data: 'cmd_smm' }, { text: '➕ Add Order', callback_data: 'flow_order' }], [{ text: '⬅️ Main', callback_data: 'menu_main' }]] },
+  fin:   { inline_keyboard: [[{ text: '💸 Log Expense', callback_data: 'flow_expense' }, { text: '💰 Budget', callback_data: 'flow_budget' }], [{ text: '⬅️ Main', callback_data: 'menu_main' }]] },
+  mem:   { inline_keyboard: [[{ text: '🧠 Memories', callback_data: 'cmd_memories' }, { text: '💾 Save', callback_data: 'flow_save' }], [{ text: '⬅️ Main', callback_data: 'menu_main' }]] },
   tools: { inline_keyboard: [[{ text: '🧮 Calculator', callback_data: 'flow_calc' }, { text: '⏰ Reminder', callback_data: 'flow_remind' }], [{ text: '🌤️ Weather', callback_data: 'flow_weather' }], [{ text: '⬅️ Main', callback_data: 'menu_main' }]] },
   back:  { inline_keyboard: [[{ text: '⬅️ Main Menu', callback_data: 'menu_main' }]] },
 };
 
 const MENU_TEXTS = {
-  main:  '🤖 *Sultan Agent v5.0*\n\n_ChatGPT + Gemini + Replit Agent — Sirf Sultan ke liye_ 🔥\n\nKuch bhi poocho ya neeche se choose karo:',
+  main:  '🤖 *Sultan Agent v5.1*\n\n_ChatGPT + Gemini + Replit Agent — Sirf Sultan ke liye_ 🔥\n\nKuch bhi poocho ya neeche se choose karo:',
   eng:   '🏗️ *MA Engineering Panel*\n\nProjects, materials, quotations, profit — sab yahan!',
   smm:   '📊 *SMM Panel*\n\nOrders track karo, revenue dekho!',
   fin:   '💸 *Finance Manager*\n\nExpenses log karo, budget check karo!',
-  mem:   '🧠 *Memory — Firebase Sync*\n\n_App + Bot dono mein dikh ta hai!_',
+  mem:   '🧠 *Memory — Firebase Sync*\n\n_App + Bot dono mein dikhta hai!_',
   tools: '🛠️ *Tools*\n\nCalculator, Reminders, Weather!',
 };
-
-function menuKb(key) {
-  return { eng: KB.eng, smm: KB.smm, fin: KB.fin, mem: KB.mem, tools: KB.tools, mat: KB.mat }[key] || KB.main;
-}
 
 const MATERIALS = {
   cement: { price: 1200, unit: 'bag (50kg)', emoji: '🏗️' },
@@ -249,102 +240,114 @@ const MATERIALS = {
 const userState = new Map();
 const reminders = [];
 
-// ─── Send helpers ─────────────────────────────────────────────────────────────
 const send = (cid, text, kb) => tg('sendMessage', { chat_id: cid, text, parse_mode: 'Markdown', reply_markup: kb || KB.back });
 const typing = cid => tg('sendChatAction', { chat_id: cid, action: 'typing' }).catch(() => {});
-const edit = (cid, mid, text, kb) => tg('editMessageText', { chat_id: cid, message_id: mid, text, parse_mode: 'Markdown', reply_markup: kb || KB.back });
+const edit   = (cid, mid, text, kb) => tg('editMessageText', { chat_id: cid, message_id: mid, text, parse_mode: 'Markdown', reply_markup: kb || KB.back });
 
 // ─── Daily Report ─────────────────────────────────────────────────────────────
 async function dailyReport(cid) {
   const [projects, orders, memory] = await Promise.all([
-    fbGet(`users/${FB_USER}/projects`), fbGet(`users/${FB_USER}/orders`), fbGet(`users/${FB_USER}/memory`),
+    fbGet(`users/${FB_USER}/projects`),
+    fbGet(`users/${FB_USER}/orders`),
+    fbGet(`users/${FB_USER}/memory`),
   ]);
   const date = new Date().toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Karachi' });
-  const active = projects.filter(p => ['active', 'Active'].includes(p.status));
-  const revenue = orders.reduce((s, o) => s + (parseFloat(o.unitPrice || 0) * parseFloat(o.quantity || 1)), 0);
+  const active  = projects.filter(p => ['active','Active'].includes(p.status));
+  const revenue = orders.reduce((s, o) => s + (parseFloat(o.unitPrice||0) * parseFloat(o.quantity||1)), 0);
   return send(cid,
-    `🌅 *Sultan Agent — Daily Report*\n📅 ${date}\n\n🏗️ *Engineering*\n${active.slice(0,3).map(p => '• ' + p.name).join('\n') || '• Koi active project nahi'}\nTotal: ${projects.length} | Active: ${active.length}\n\n📊 *SMM Panel*\nOrders: ${orders.length} | Revenue: PKR ${revenue.toLocaleString()}\n\n🧠 *Memory*\n${memory.length} cheezein saved\n\n🤖 AI: ${GROQ ? 'Groq ⚡' : GEMINI ? 'Gemini 🔮' : 'OpenAI 🧠'} | 🚂 Railway: 24/7 Online`,
+    `🌅 *Daily Report*\n📅 ${date}\n\n🏗️ Projects: ${projects.length} total | ${active.length} active\n${active.slice(0,3).map(p=>'• '+p.name).join('\n')||'• Koi active project nahi'}\n\n📊 SMM: ${orders.length} orders | PKR ${revenue.toLocaleString()} revenue\n🧠 Memory: ${memory.length} items\n\n🤖 AI: ${GROQ?'Groq ⚡':GEMINI?'Gemini 🔮':OPENAI?'OpenAI 🧠':'❌'} | 🚂 Railway: 24/7`,
     KB.main);
 }
 
 function scheduleDailyReport() {
   const now = new Date(), next = new Date();
-  next.setUTCHours(2, 0, 0, 0); // 7 AM PKT
+  next.setUTCHours(2, 0, 0, 0);
   if (next <= now) next.setDate(next.getDate() + 1);
-  setTimeout(async () => { if (ADMIN) await dailyReport(ADMIN).catch(() => {}); scheduleDailyReport(); }, next - now);
-  log('Next daily report:', next.toISOString());
+  setTimeout(async () => { if (ADMIN) await dailyReport(ADMIN).catch(()=>{}); scheduleDailyReport(); }, next - now);
 }
 
-// ─── Callback handler ─────────────────────────────────────────────────────────
+// ─── Callback handler — INSTANT response ─────────────────────────────────────
 async function handleCB(query) {
   const cid  = query.message.chat.id;
   const mid  = query.message.message_id;
   const data = query.data;
+
+  // ✅ INSTANT: Answer callback FIRST — removes loading spinner immediately
   await tg('answerCallbackQuery', { callback_query_id: query.id });
 
-  // Menu navigation
-  if (data.startsWith('menu_')) {
+  // ✅ INSTANT: Menu navigation — pure text, no Firebase needed
+  if (data === 'menu_main' || data === 'menu_eng' || data === 'menu_smm' || data === 'menu_fin' || data === 'menu_mem' || data === 'menu_tools') {
     const key = data.slice(5);
-    return edit(cid, mid, MENU_TEXTS[key] || MENU_TEXTS.main, menuKb(key));
+    const kb = { eng: KB.eng, smm: KB.smm, fin: KB.fin, mem: KB.mem, tools: KB.tools }[key] || KB.main;
+    return edit(cid, mid, MENU_TEXTS[key] || MENU_TEXTS.main, kb);
   }
 
+  if (data === 'menu_mat') return edit(cid, mid, '🧱 *Material Rates*\n\nJo chahiye select karo:', KB.mat);
+
+  // ✅ INSTANT: Status — no Firebase
   if (data === 'cmd_status') {
     const up = process.uptime(), h = Math.floor(up/3600), m = Math.floor((up%3600)/60);
     return edit(cid, mid,
-      `🟢 *Sultan Agent v5.0 — Online!*\n\n⏱️ Uptime: ${h}h ${m}m\n🤖 AI: ${GROQ ? 'Groq ⚡' : ''}${GEMINI ? ' Gemini 🔮' : ''}${OPENAI ? ' OpenAI 🧠' : ''}${!GROQ && !GEMINI && !OPENAI ? '❌ No key' : ''}\n🔥 Firebase: ${FB_KEY ? `${FB_ID} ✅` : '❌ Not set'}\n🎙️ Voice: ${GROQ ? 'Whisper ✅' : '❌ Need Groq'}\n📱 App Sync: Real-time ✅\n🚂 Railway: 24/7 ✅`,
+      `🟢 *Sultan Agent v5.1 — Online!*\n\n⏱️ Uptime: ${h}h ${m}m\n🤖 AI: ${GROQ?'Groq ⚡':''}${GEMINI?'Gemini 🔮':''}${OPENAI?'OpenAI 🧠':''}${!GROQ&&!GEMINI&&!OPENAI?'❌ No key set':''}\n🔥 Firebase: ${FB_ID} ✅\n🎙️ Voice: ${GROQ?'Whisper ✅':'Need Groq key'}\n📱 App Sync: Real-time ✅\n🚂 Railway: 24/7 ✅`,
       KB.back);
   }
 
-  if (data === 'cmd_report') return dailyReport(cid);
-
-  if (data === 'cmd_projects') {
-    const ps = await fbGet(`users/${FB_USER}/projects`);
-    if (!ps.length) return edit(cid, mid, '🏗️ *Projects*\n\nApp se project add karo — yahan dikh jayega!', KB.eng);
-    const list = ps.slice(0, 8).map((p, i) => `${i+1}. *${p.name}* — ${p.status || 'Active'}${p.amount ? ' | PKR ' + parseInt(p.amount).toLocaleString() : ''}`).join('\n');
-    return edit(cid, mid, `🏗️ *Projects* (${ps.length})\n\n${list}`, KB.eng);
+  // ✅ INSTANT: Flow triggers — just show text, no Firebase
+  const FLOW_TEXTS = {
+    flow_ai:      '💬 *AI Chat Mode*\n\nMujhse kuch bhi poocho — coding, engineering, SMM, business!\n\n🎙️ Voice message bhi bhej sakte ho!',
+    flow_quote:   '📝 *AI Quotation*\n\nProject describe karo:\nExample: _2 bedroom house Lahore 1500 sqft_',
+    flow_profit:  '💰 *Profit Calculator*\n\nFormat: selling\_price cost\nExample: _50000 32000_',
+    flow_order:   '📦 *SMM Order Add*\n\nFormat: service quantity unit\_price\nExample: _Instagram Followers 10000 0.5_',
+    flow_expense: '💸 *Expense Log*\n\nFormat: amount description\nExample: _5000 Cement bags_',
+    flow_budget:  '💰 *Budget Check*\n\nFormat: total spent\nExample: _100000 65000_',
+    flow_save:    '💾 *Save to Memory*\n\nJo yaad rakhna hai woh likho:',
+    flow_calc:    '🧮 *Calculator*\n\nMath expression:\nExample: _380 * 500 + 250 * 20_',
+    flow_weather: '🌤️ *Weather*\n\nCity ka naam likho:',
+    flow_remind:  '⏰ *Set Reminder*\n\nFormat: 30m ya 2h + message\nExample: _30m Meeting hai_',
+  };
+  if (FLOW_TEXTS[data]) {
+    userState.set(cid, { flow: data.slice(5), step: 0 });
+    return edit(cid, mid, FLOW_TEXTS[data], KB.back);
   }
 
-  if (data === 'cmd_smm') {
-    const os = await fbGet(`users/${FB_USER}/orders`);
-    const rev = os.reduce((s, o) => s + (parseFloat(o.unitPrice || 0) * parseFloat(o.quantity || 1)), 0);
-    return edit(cid, mid,
-      `📊 *SMM Dashboard*\n\nTotal: ${os.length} orders\nPending: ${os.filter(o => o.status === 'pending').length}\nDone: ${os.filter(o => o.status === 'completed').length}\nRevenue: PKR ${rev.toLocaleString()}\n\n${os.slice(0, 5).map(o => `• ${o.service || 'Order'} — ${o.status || 'pending'}`).join('\n') || '• Koi order nahi'}`,
-      KB.smm);
-  }
-
-  if (data === 'cmd_memories') {
-    const ms = await fbGet(`users/${FB_USER}/memory`);
-    if (!ms.length) return edit(cid, mid, '🧠 *Memory*\n\nKoi memory nahi. "Yaad rakh [baat]" likh kar save karo!', KB.mem);
-    const list = ms.slice(-8).reverse().map((m, i) => `${i+1}. ${(m.text || m.content || '').slice(0, 80)}`).join('\n');
-    return edit(cid, mid, `🧠 *Memories* (${ms.length})\n\n${list}`, KB.mem);
-  }
-
-  // Material buttons
+  // Material quick calc
   if (data.startsWith('mat_')) {
     const type = data.slice(4);
     const mat = MATERIALS[type];
     if (!mat) return;
     userState.set(cid, { flow: 'mat_qty', data: { type } });
-    return edit(cid, mid, `${mat.emoji} *${type.charAt(0).toUpperCase() + type.slice(1)}*\n\nRate: PKR ${mat.price.toLocaleString()} / ${mat.unit}\n\nKitna chahiye? Number type karo:`, KB.back);
+    return edit(cid, mid, `${mat.emoji} *${type.charAt(0).toUpperCase()+type.slice(1)}*\n\nRate: PKR ${mat.price.toLocaleString()} / ${mat.unit}\n\nKitna chahiye? Number type karo:`, KB.back);
   }
 
-  // Flow triggers
-  const FLOW_TEXTS = {
-    flow_ai:      '💬 *AI Chat Mode*\n\nMujhse kuch bhi poocho — coding, engineering, SMM, business, ya kuch bhi!\n\n🎙️ Voice message bhi bhej sakte ho!',
-    flow_quote:   '📝 *AI Quotation*\n\nProject describe karo:\nExample: 2 bedroom house Lahore 1500 sqft',
-    flow_profit:  '💰 *Profit Calc*\n\nFormat: selling_price cost\nExample: 50000 32000',
-    flow_order:   '📦 *SMM Order Add*\n\nFormat: service quantity unit_price\nExample: Instagram Followers 10000 0.5',
-    flow_expense: '💸 *Expense Log*\n\nFormat: amount description\nExample: 5000 Cement bags',
-    flow_budget:  '💰 *Budget Check*\n\nFormat: total spent\nExample: 100000 65000',
-    flow_save:    '💾 *Save Memory*\n\nJo yaad rakhna hai woh likho:',
-    flow_calc:    '🧮 *Calculator*\n\nMath expression:\nExample: 380 * 500 + 250 * 20',
-    flow_weather: '🌤️ *Weather*\n\nCity ka naam:\nExample: Lahore',
-    flow_remind:  '⏰ *Reminder*\n\nFormat: 30m Meeting hai ya 2h Lunch',
-  };
+  // Firebase-dependent (load async but show loading first)
+  if (data === 'cmd_report') {
+    await edit(cid, mid, '⏳ Report load ho rahi hai...', KB.back);
+    return dailyReport(cid);
+  }
 
-  if (FLOW_TEXTS[data]) {
-    userState.set(cid, { flow: data.slice(5), step: 0 });
-    return edit(cid, mid, FLOW_TEXTS[data], KB.back);
+  if (data === 'cmd_projects') {
+    await edit(cid, mid, '⏳ Projects load ho rahe hain...', KB.back);
+    const ps = await fbGet(`users/${FB_USER}/projects`);
+    if (!ps.length) return edit(cid, mid, '🏗️ *Projects*\n\nApp se project add karo — yahan dikh jayega!', KB.eng);
+    const list = ps.slice(0,8).map((p,i)=>`${i+1}. *${p.name}* — ${p.status||'Active'}${p.amount?' | PKR '+parseInt(p.amount).toLocaleString():''}`).join('\n');
+    return edit(cid, mid, `🏗️ *Projects* (${ps.length})\n\n${list}`, KB.eng);
+  }
+
+  if (data === 'cmd_smm') {
+    await edit(cid, mid, '⏳ SMM data load ho raha hai...', KB.back);
+    const os = await fbGet(`users/${FB_USER}/orders`);
+    const rev = os.reduce((s,o)=>s+(parseFloat(o.unitPrice||0)*parseFloat(o.quantity||1)),0);
+    return edit(cid, mid,
+      `📊 *SMM Dashboard*\n\nTotal: ${os.length} orders\nPending: ${os.filter(o=>o.status==='pending').length}\nDone: ${os.filter(o=>o.status==='completed').length}\nRevenue: PKR ${rev.toLocaleString()}\n\n${os.slice(0,5).map(o=>`• ${o.service||'Order'} — ${o.status||'pending'}`).join('\n')||'• Koi order nahi'}`,
+      KB.smm);
+  }
+
+  if (data === 'cmd_memories') {
+    await edit(cid, mid, '⏳ Memories load ho rahi hain...', KB.back);
+    const ms = await fbGet(`users/${FB_USER}/memory`);
+    if (!ms.length) return edit(cid, mid, '🧠 *Memory*\n\nKoi memory nahi. "Yaad rakh [baat]" likh kar save karo!', KB.mem);
+    const list = ms.slice(-8).reverse().map((m,i)=>`${i+1}. ${(m.text||m.content||'').slice(0,80)}`).join('\n');
+    return edit(cid, mid, `🧠 *Memories* (${ms.length})\n\n${list}`, KB.mem);
   }
 }
 
@@ -352,37 +355,33 @@ async function handleCB(query) {
 async function handleText(msg) {
   const cid  = msg.chat.id;
   const text = (msg.text || '').trim();
-  const from = msg.from?.first_name || 'User';
+  const from = msg.from?.first_name || 'Sultan';
 
-  // Save to Firebase (so app can see bot messages)
+  // Non-blocking save
   fbSave(`users/${FB_USER}/telegram`, String(Date.now()), {
-    type: 'incoming', text: text.slice(0, 300), from,
+    type: 'incoming', text: text.slice(0,300), from,
     chatId: String(cid), timestamp: Date.now(), role: 'user'
-  }).catch(() => {});
+  });
 
-  // Commands
-  if (text === '/start' || text === '/menu') {
+  if (text === '/start' || text === '/menu')
     return send(cid, `👋 *Salaam ${from}!*\n\n${MENU_TEXTS.main}`, KB.main);
-  }
   if (text === '/status') {
     const up = process.uptime(), h = Math.floor(up/3600), m = Math.floor((up%3600)/60);
-    return send(cid, `🟢 *Sultan Agent v5.0*\nUptime: ${h}h ${m}m\nAI: ${GROQ ? 'Groq ⚡' : GEMINI ? 'Gemini 🔮' : OPENAI ? 'OpenAI 🧠' : '❌'}\nFirebase: ${FB_KEY ? '✅' : '❌'}`, KB.main);
+    return send(cid, `🟢 *Sultan Agent v5.1*\nUptime: ${h}h ${m}m\nAI: ${GROQ?'Groq ⚡':GEMINI?'Gemini 🔮':OPENAI?'OpenAI 🧠':'❌'}\nFirebase: ✅`, KB.main);
   }
   if (text === '/report') return dailyReport(cid);
   if (text === '/clear') { chatHistory.delete(cid); return send(cid, '🗑️ Chat history clear!', KB.main); }
 
   // Memory shortcuts
   const low = text.toLowerCase();
-  const isMemory = low.startsWith('yaad rakh ') || low.startsWith('remember ') || low.startsWith('note karo ');
-  if (isMemory) {
+  if (low.startsWith('yaad rakh ') || low.startsWith('remember ') || low.startsWith('note karo ')) {
     const offset = low.startsWith('yaad rakh ') ? 10 : low.startsWith('remember ') ? 9 : 11;
     const content = text.slice(offset).trim();
     if (content) {
-      await typing(cid);
-      await fbSave(`users/${FB_USER}/memory`, String(Date.now()), { text: content, createdAt: Date.now(), tags: [], source: 'telegram' });
+      fbSave(`users/${FB_USER}/memory`, String(Date.now()), { text: content, createdAt: Date.now(), tags: [], source: 'telegram' });
+      fbInvalidate(`users/${FB_USER}/memory`);
       addHist(cid, 'user', text);
-      const mems = await fbGet(`users/${FB_USER}/memory`);
-      const replyText = `🧠 *Yaad kar liya!*\n\n_"${content}"_\n\n🔥 Firebase + App mein sync ho gaya!\nTotal memories: ${mems.length}`;
+      const replyText = `🧠 *Yaad kar liya!*\n\n_"${content}"_\n\n🔥 App + Bot sync ✅`;
       addHist(cid, 'assistant', replyText);
       return send(cid, replyText, KB.main);
     }
@@ -392,53 +391,34 @@ async function handleText(msg) {
   const state = userState.get(cid);
   if (state) { userState.delete(cid); return handleFlow(cid, state.flow, text, state.data || {}); }
 
-  // Default: full AI chat (like ChatGPT/Gemini)
+  // AI chat
   await typing(cid);
   const result = await callAI(cid, text);
-  if (result) {
+  if (result)
     return tg('sendMessage', { chat_id: cid, text: `${result.text}\n\n_— ${result.by}_`, parse_mode: 'Markdown', reply_markup: KB.main });
-  }
-  return send(cid,
-    '❌ *AI abhi available nahi.*\n\nRailway mein koi ek API key set karo:\n• GROQ\\_API\\_KEY (free, best)\n• GEMINI\\_API\\_KEY\n• OPENAI\\_API\\_KEY',
-    KB.main);
+  return send(cid, '❌ *AI key set nahi hai.*\n\nRailway mein GROQ\_API\_KEY ya GEMINI\_API\_KEY set karo.', KB.main);
 }
 
 // ─── Voice handler ────────────────────────────────────────────────────────────
 async function handleVoice(msg) {
   const cid = msg.chat.id;
   await typing(cid);
-
-  if (!GROQ) {
-    return send(cid, '🎙️ Voice messages ke liye GROQ\\_API\\_KEY chahiye (Railway mein set karo).\nText message bhejo.', KB.back);
-  }
-
+  if (!GROQ) return send(cid, '🎙️ Voice ke liye GROQ\_API\_KEY chahiye. Text bhejo.', KB.back);
   const transcript = await transcribeVoice(msg.voice.file_id);
-  if (!transcript) return send(cid, '❌ Voice samajh nahi aaya. Dobara try karo ya text likho.', KB.back);
-
-  // Show what was heard
+  if (!transcript) return send(cid, '❌ Voice samajh nahi aaya. Dobara try karo.', KB.back);
   await tg('sendMessage', { chat_id: cid, text: `🎙️ *Suna:* _"${transcript}"_`, parse_mode: 'Markdown' });
-
-  // Save voice to Firebase
-  fbSave(`users/${FB_USER}/telegram`, String(Date.now()), {
-    type: 'voice', text: transcript.slice(0, 300), from: msg.from?.first_name || 'User',
-    chatId: String(cid), timestamp: Date.now(), role: 'user'
-  }).catch(() => {});
-
-  // Memory shortcut from voice
+  fbSave(`users/${FB_USER}/telegram`, String(Date.now()), { type: 'voice', text: transcript.slice(0,300), chatId: String(cid), timestamp: Date.now(), role: 'user' });
   const low = transcript.toLowerCase();
   if (low.startsWith('yaad rakh ') || low.startsWith('remember ')) {
     const content = transcript.slice(low.startsWith('yaad rakh ') ? 10 : 9).trim();
-    await fbSave(`users/${FB_USER}/memory`, String(Date.now()), { text: content, createdAt: Date.now(), tags: [], source: 'voice' });
-    return send(cid, `🧠 *Voice se yaad kar liya!*\n\n_"${content}"_\n\n🔥 Firebase + App sync ✅`, KB.main);
+    fbSave(`users/${FB_USER}/memory`, String(Date.now()), { text: content, createdAt: Date.now(), tags: [], source: 'voice' });
+    fbInvalidate(`users/${FB_USER}/memory`);
+    return send(cid, `🧠 *Voice se yaad kar liya!*\n\n_"${content}"_\n\n🔥 App sync ✅`, KB.main);
   }
-
-  // AI reply to voice
   await typing(cid);
   const result = await callAI(cid, transcript);
-  if (result) {
-    return tg('sendMessage', { chat_id: cid, text: `${result.text}\n\n_— ${result.by}_`, parse_mode: 'Markdown', reply_markup: KB.main });
-  }
-  return send(cid, `🎙️ Suna: _"${transcript}"_\n\n❌ AI available nahi.`, KB.main);
+  if (result) return tg('sendMessage', { chat_id: cid, text: `${result.text}\n\n_— ${result.by}_`, parse_mode: 'Markdown', reply_markup: KB.main });
+  return send(cid, `🎙️ _"${transcript}"_\n\n❌ AI unavailable.`, KB.main);
 }
 
 // ─── Flow handler ─────────────────────────────────────────────────────────────
@@ -449,98 +429,79 @@ async function handleFlow(cid, flow, input, data = {}) {
     const result = await callAI(cid, input);
     return result
       ? tg('sendMessage', { chat_id: cid, text: `${result.text}\n\n_— ${result.by}_`, parse_mode: 'Markdown', reply_markup: KB.main })
-      : send(cid, '❌ AI unavailable. API key check karo.', KB.main);
+      : send(cid, '❌ AI unavailable.', KB.main);
   }
-
   if (flow === 'quote') {
-    const prompt = `Engineering project ka professional quotation banao (Pakistani PKR rates): "${input}". Materials list, labor cost, timeline, aur total amount include karo.`;
-    const result = await callAI(cid, prompt);
+    const result = await callAI(cid, `Engineering project quotation (Pakistani PKR): "${input}". Materials, labor, timeline, total.`);
     return result ? tg('sendMessage', { chat_id: cid, text: result.text, parse_mode: 'Markdown', reply_markup: KB.eng }) : send(cid, '❌ AI unavailable.', KB.eng);
   }
-
   if (flow === 'profit') {
     const [p, c] = input.split(/\s+/).map(Number);
-    if (isNaN(p) || isNaN(c)) return send(cid, '⚠️ Format: selling_price cost\nExample: 50000 32000');
-    const profit = p - c;
-    const margin = ((profit / p) * 100).toFixed(1);
-    const emoji = parseFloat(margin) > 30 ? '🟢' : parseFloat(margin) > 15 ? '🟡' : '🔴';
-    const bars = Math.floor(parseFloat(margin) / 10);
-    const bar = '▓'.repeat(Math.min(bars, 10)) + '░'.repeat(Math.max(0, 10 - bars));
+    if (isNaN(p)||isNaN(c)) return send(cid, '⚠️ Format: selling_price cost\nExample: 50000 32000');
+    const profit = p-c, margin = ((profit/p)*100).toFixed(1);
+    const bars = Math.floor(parseFloat(margin)/10);
+    const bar = '▓'.repeat(Math.min(bars,10))+'░'.repeat(Math.max(0,10-bars));
+    const emoji = parseFloat(margin)>30?'🟢':parseFloat(margin)>15?'🟡':'🔴';
     return send(cid, `💰 *Profit Analysis*\n\nSelling: PKR ${p.toLocaleString()}\nCost:    PKR ${c.toLocaleString()}\nProfit:  PKR ${profit.toLocaleString()}\n\n[${bar}] ${margin}% ${emoji}`, KB.main);
   }
-
   if (flow === 'order') {
     const parts = input.trim().split(/\s+/);
-    if (parts.length < 3) return send(cid, '⚠️ Format: service quantity unit_price\nExample: Instagram Followers 10000 0.5');
-    const unitPrice = parseFloat(parts[parts.length - 1]);
-    const quantity  = parseInt(parts[parts.length - 2]);
-    const service   = parts.slice(0, -2).join(' ');
-    await fbSave(`users/${FB_USER}/orders`, String(Date.now()), {
-      service, quantity, unitPrice, status: 'pending',
-      date: new Date().toISOString().split('T')[0]
-    });
-    return send(cid, `📦 *Order Added!*\n\n${service}\nQty: ${quantity.toLocaleString()} | Rate: PKR ${unitPrice}/unit\nTotal: PKR ${(quantity * unitPrice).toLocaleString()}\n\n🔥 App mein bhi dikh jayega ✅`, KB.smm);
+    if (parts.length < 3) return send(cid, '⚠️ Format: service quantity unit_price');
+    const unitPrice = parseFloat(parts[parts.length-1]), quantity = parseInt(parts[parts.length-2]);
+    const service = parts.slice(0,-2).join(' ');
+    fbSave(`users/${FB_USER}/orders`, String(Date.now()), { service, quantity, unitPrice, status: 'pending', date: new Date().toISOString().split('T')[0] });
+    fbInvalidate(`users/${FB_USER}/orders`);
+    return send(cid, `📦 *Order Added!*\n\n${service}\nQty: ${quantity.toLocaleString()} | Rate: PKR ${unitPrice}/unit\nTotal: PKR ${(quantity*unitPrice).toLocaleString()}\n\n🔥 App mein bhi dikh jayega ✅`, KB.smm);
   }
-
   if (flow === 'save') {
-    await fbSave(`users/${FB_USER}/memory`, String(Date.now()), { text: input, createdAt: Date.now(), tags: [], source: 'telegram' });
-    return send(cid, `🧠 *Saved!*\n\n_"${input}"_\n\n🔥 App + Bot sync ✅`, KB.mem);
+    fbSave(`users/${FB_USER}/memory`, String(Date.now()), { text: input, createdAt: Date.now(), tags: [], source: 'telegram' });
+    fbInvalidate(`users/${FB_USER}/memory`);
+    return send(cid, `🧠 *Saved!*\n\n_"${input}"_\n\n🔥 App sync ✅`, KB.mem);
   }
-
   if (flow === 'expense') {
     const match = input.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
     if (!match) return send(cid, '⚠️ Format: amount description\nExample: 5000 Cement bags');
-    const [, amt, desc] = match;
-    await fbSave(`users/${FB_USER}/memory`, String(Date.now()), {
-      text: `💸 PKR ${amt} — ${desc}`, createdAt: Date.now(), tags: ['expense'], source: 'telegram'
-    });
+    const [,amt,desc] = match;
+    fbSave(`users/${FB_USER}/memory`, String(Date.now()), { text: `💸 PKR ${amt} — ${desc}`, createdAt: Date.now(), tags: ['expense'], source: 'telegram' });
+    fbInvalidate(`users/${FB_USER}/memory`);
     return send(cid, `💸 *Expense Logged!*\n\nPKR ${parseFloat(amt).toLocaleString()} — ${desc}\n🔥 App mein save ✅`, KB.fin);
   }
-
   if (flow === 'budget') {
-    const [t, s] = input.split(/\s+/).map(Number);
-    if (isNaN(t) || isNaN(s)) return send(cid, '⚠️ Format: total spent\nExample: 100000 65000');
-    const rem  = t - s;
-    const pct  = Math.min(100, (s / t * 100)).toFixed(1);
-    const bars = Math.floor(parseFloat(pct) / 10);
-    const bar  = '▓'.repeat(bars) + '░'.repeat(10 - bars);
-    const st   = rem < 0 ? '❌ Over budget!' : parseFloat(pct) > 85 ? '🔴 Almost khatam!' : parseFloat(pct) > 60 ? '🟡 Theek hai' : '🟢 Safe';
-    return send(cid, `💰 *Budget Check*\n\nTotal: PKR ${t.toLocaleString()}\nSpent: PKR ${s.toLocaleString()}\nBacha: PKR ${Math.abs(rem).toLocaleString()}${rem < 0 ? ' (OVER!)' : ''}\n\n[${bar}] ${pct}%\n${st}`, KB.main);
+    const [t,s] = input.split(/\s+/).map(Number);
+    if (isNaN(t)||isNaN(s)) return send(cid, '⚠️ Format: total spent\nExample: 100000 65000');
+    const rem = t-s, pct = Math.min(100,(s/t*100)).toFixed(1);
+    const bars = Math.floor(parseFloat(pct)/10);
+    const bar = '▓'.repeat(bars)+'░'.repeat(10-bars);
+    const st = rem<0?'❌ Over budget!':parseFloat(pct)>85?'🔴 Almost khatam!':parseFloat(pct)>60?'🟡 Theek hai':'🟢 Safe';
+    return send(cid, `💰 *Budget Check*\n\nTotal: PKR ${t.toLocaleString()}\nSpent: PKR ${s.toLocaleString()}\nBacha: PKR ${Math.abs(rem).toLocaleString()}${rem<0?' (OVER!)':''}\n\n[${bar}] ${pct}%\n${st}`, KB.main);
   }
-
   if (flow === 'calc') {
     try {
-      const safe = input.replace(/[^0-9+\-*/.() ]/g, '');
-      // eslint-disable-next-line no-new-func
+      const safe = input.replace(/[^0-9+\-*/.() ]/g,'');
       const res = new Function(`return (${safe})`)();
       return send(cid, `🧮 \`${input}\` = *${Number(res).toLocaleString()}*`, KB.main);
-    } catch { return send(cid, '❌ Invalid. Example: 380 * 100'); }
+    } catch { return send(cid, '❌ Invalid expression. Example: 380 * 100'); }
   }
-
   if (flow === 'weather') {
-    const city = input.trim();
-    const result = await callAI(cid, `${city} ka abhi ka weather kya hai? Temperature, humidity, wind speed, aur overall condition batao in detail.`);
-    return result ? send(cid, result.text, KB.main) : send(cid, '🌤️ Weather info available nahi.', KB.main);
+    const result = await callAI(cid, `${input.trim()} ka abhi ka weather kya hai? Temperature, humidity, wind, conditions detail mein.`);
+    return result ? send(cid, result.text, KB.main) : send(cid, '🌤️ Weather info unavailable.', KB.main);
   }
-
   if (flow === 'remind') {
     const match = input.match(/^(\d+)(m|h|d)\s+(.+)$/i);
-    if (!match) return send(cid, '⚠️ Format: 30m Meeting hai ya 2h Lunch');
-    const [, num, unit, message] = match;
-    const ms = { m: 60000, h: 3600000, d: 86400000 }[unit.toLowerCase()];
-    reminders.push({ chatId: cid, text: message, fireAt: Date.now() + parseInt(num) * ms });
-    const label = `${num} ${unit === 'm' ? 'minute' : unit === 'h' ? 'ghante' : 'din'}`;
+    if (!match) return send(cid, '⚠️ Format: 30m Message\nExample: 30m Meeting hai');
+    const [,num,unit,message] = match;
+    const ms = {m:60000,h:3600000,d:86400000}[unit.toLowerCase()];
+    reminders.push({ chatId: cid, text: message, fireAt: Date.now()+parseInt(num)*ms });
+    const label = `${num} ${unit==='m'?'minute':unit==='h'?'ghante':'din'}`;
     return send(cid, `⏰ *Reminder Set!*\n\n_"${message}"_\n${label} baad yaad dilaaunga ✅`, KB.main);
   }
-
   if (flow === 'mat_qty') {
     const qty = parseFloat(input);
     const mat = MATERIALS[data.type];
-    if (!mat || isNaN(qty) || qty <= 0) return send(cid, '⚠️ Sirf number type karo. Example: 100');
-    return send(cid, `${mat.emoji} *Material Cost*\n\n${data.type} × ${qty} ${mat.unit}\nRate: PKR ${mat.price.toLocaleString()}/${mat.unit}\n\n💰 *Total: PKR ${(qty * mat.price).toLocaleString()}*`, KB.eng);
+    if (!mat||isNaN(qty)||qty<=0) return send(cid, '⚠️ Sirf number type karo. Example: 100');
+    return send(cid, `${mat.emoji} *Material Cost*\n\n${data.type} × ${qty} ${mat.unit}\nRate: PKR ${mat.price.toLocaleString()}/${mat.unit}\n\n💰 *Total: PKR ${(qty*mat.price).toLocaleString()}*`, KB.eng);
   }
-
-  // Fallback: AI
+  // Fallback AI
   const result = await callAI(cid, input);
   return result
     ? tg('sendMessage', { chat_id: cid, text: `${result.text}\n\n_— ${result.by}_`, parse_mode: 'Markdown', reply_markup: KB.main })
@@ -550,66 +511,56 @@ async function handleFlow(cid, flow, input, data = {}) {
 // ─── Reminder tick ────────────────────────────────────────────────────────────
 setInterval(() => {
   const now = Date.now();
-  for (let i = reminders.length - 1; i >= 0; i--) {
+  for (let i = reminders.length-1; i>=0; i--) {
     if (now >= reminders[i].fireAt) {
-      const r = reminders.splice(i, 1)[0];
-      tg('sendMessage', { chat_id: r.chatId, text: `⏰ *Reminder!*\n\n${r.text}`, parse_mode: 'Markdown', reply_markup: KB.main }).catch(() => {});
+      const r = reminders.splice(i,1)[0];
+      tg('sendMessage', { chat_id: r.chatId, text: `⏰ *Reminder!*\n\n${r.text}`, parse_mode: 'Markdown', reply_markup: KB.main }).catch(()=>{});
     }
   }
 }, 30000);
 
-// ─── Long polling — 24/7 with auto-recovery ───────────────────────────────────
+// ─── Long polling — 24/7 ─────────────────────────────────────────────────────
 let offset = 0, errCount = 0;
 async function poll() {
   try {
-    const d = await tg('getUpdates', { offset, timeout: 25, limit: 10, allowed_updates: ['message', 'callback_query'] });
+    const d = await tg('getUpdates', { offset, timeout: 20, limit: 20, allowed_updates: ['message','callback_query'] });
     if (!d.ok || !Array.isArray(d.result)) return;
     errCount = 0;
     for (const u of d.result) {
       offset = u.update_id + 1;
       if (u.callback_query) {
-        log('[BTN]', (u.callback_query.from?.first_name || 'User') + ':', u.callback_query.data);
-        await handleCB(u.callback_query).catch(e => log('[CB Error]', e.message));
+        log('[BTN]', u.callback_query.from?.first_name+':', u.callback_query.data);
+        handleCB(u.callback_query).catch(e => log('[CB]', e.message));
       } else if (u.message) {
         const m = u.message;
-        log('[MSG]', (m.from?.first_name || 'User') + ':', m.text?.slice(0, 50) || (m.voice ? '🎙️ Voice' : ''));
-        if (m.voice)      await handleVoice(m).catch(e => log('[Voice Error]', e.message));
-        else if (m.text)  await handleText(m).catch(e => log('[MSG Error]', e.message));
+        log('[MSG]', m.from?.first_name+':', m.text?.slice(0,40)||(m.voice?'🎙️ Voice':''));
+        if (m.voice)     handleVoice(m).catch(e => log('[Voice]', e.message));
+        else if (m.text) handleText(m).catch(e => log('[MSG]', e.message));
       }
     }
   } catch(e) {
     errCount++;
-    log(`[Poll Error #${errCount}]`, e.message);
-    if (errCount > 3) await new Promise(r => setTimeout(r, 8000));
+    log(`[Poll #${errCount}]`, e.message);
+    if (errCount > 3) await new Promise(r => setTimeout(r, 5000));
   }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
-  if (!TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN missing! Railway mein set karo.'); process.exit(1); }
+  if (!TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN missing!'); process.exit(1); }
   const me = await tg('getMe');
   if (!me.ok) { console.error('❌ Invalid bot token!'); process.exit(1); }
-
-  log(`✅ @${me.result.username} — Sultan Agent v5.0 ONLINE`);
-  log(`🤖 AI: ${GROQ ? 'Groq ⚡ (primary)' : ''}${GEMINI ? ' Gemini 🔮' : ''}${OPENAI ? ' OpenAI 🧠' : ''}${!GROQ && !GEMINI && !OPENAI ? '❌ NO AI KEY!' : ''}`);
-  log(`🔥 Firebase: ${FB_ID} (${FB_KEY ? 'connected' : 'not set'})`);
-  log(`🎙️  Voice: ${GROQ ? 'Whisper enabled' : 'Need Groq key'}`);
-
+  log(`✅ @${me.result.username} — Sultan Agent v5.1 ONLINE`);
+  log(`🤖 AI: ${GROQ?'Groq ⚡ (primary) ':''}${GEMINI?'Gemini 🔮 ':''}${OPENAI?'OpenAI 🧠':''}${!GROQ&&!GEMINI&&!OPENAI?'❌ NO AI KEY!':''}`);
+  log(`🔥 Firebase: ${FB_ID}`);
   scheduleDailyReport();
-
   if (ADMIN) {
-    await tg('sendMessage', {
+    tg('sendMessage', {
       chat_id: ADMIN,
-      text: `✅ *Sultan Agent v5.0 Online!*\n\n🤖 AI: ${GROQ ? 'Groq ⚡' : GEMINI ? 'Gemini 🔮' : OPENAI ? 'OpenAI 🧠' : '❌ No key'}\n🔥 Firebase: ${FB_ID} ✅\n🎙️ Voice: ${GROQ ? '✅ Enabled (Whisper)' : '❌ Need Groq key'}\n📱 App Sync: Real-time ✅\n🚂 Railway: 24/7 Online\n\nMain menu neeche hai 👇`,
-      parse_mode: 'Markdown',
-      reply_markup: KB.main,
-    }).catch(() => {});
+      text: `✅ *Sultan Agent v5.1 Online!*\n\n🤖 AI: ${GROQ?'Groq ⚡':GEMINI?'Gemini 🔮':OPENAI?'OpenAI 🧠':'❌ No key'}\n🔥 Firebase: ${FB_ID} ✅\n🎙️ Voice: ${GROQ?'✅ Enabled':'❌ Need Groq key'}\n📱 App Sync: Real-time ✅\n🚂 Railway: 24/7 Online\n\n⚡ v5.1 — Buttons are now instant!\n\nMain menu neeche hai 👇`,
+      parse_mode: 'Markdown', reply_markup: KB.main,
+    }).catch(()=>{});
   }
-
-  // 24/7 polling loop
-  while (true) {
-    await poll();
-    await new Promise(r => setTimeout(r, 400));
-  }
+  while (true) { await poll(); await new Promise(r => setTimeout(r, 100)); }
 }
 main().catch(e => { console.error('Fatal:', e); process.exit(1); });
