@@ -14,7 +14,7 @@ jobs:
       - name: Push env vars to Railway (with retry)
         continue-on-error: true
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_KEY }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GROQ_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -22,6 +22,7 @@ jobs:
           OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           SERPER_KEY: ${{ secrets.SERPER_API_KEY }}
           ELEVEN_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           node << 'NODEJS'
           const https = require('https');
@@ -31,16 +32,17 @@ jobs:
           const ENV_ID     = 'b591b4fe-3105-4155-aa48-aed73d794e5b';
 
           const vars = {
-            TELEGRAM_BOT_TOKEN: process.env.TG_BOT_TOKEN,
-            ADMIN_CHAT_ID:       process.env.TG_CHAT_ID,
-            GROQ_API_KEY:        process.env.GROQ_KEY,
-            GEMINI_API_KEY:      process.env.GEMINI_KEY,
-            OPENAI_API_KEY:      process.env.OPENAI_KEY,
-            SERPER_API_KEY:      process.env.SERPER_KEY,
-            ELEVENLABS_API_KEY:  process.env.ELEVEN_KEY,
-            FIREBASE_API_KEY:    'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
-            FIREBASE_PROJECT_ID: 'v11345',
-            FIREBASE_USER_ID:    'sultan',
+            TELEGRAM_BOT_TOKEN:    process.env.TG_BOT_TOKEN,
+            ADMIN_CHAT_ID:         process.env.TG_CHAT_ID,
+            GROQ_API_KEY:          process.env.GROQ_KEY,
+            GEMINI_API_KEY:        process.env.GEMINI_KEY,
+            OPENAI_API_KEY:        process.env.OPENAI_KEY,
+            SERPER_API_KEY:        process.env.SERPER_KEY,
+            ELEVENLABS_API_KEY:    process.env.ELEVEN_KEY,
+            GITHUB_ACCESS_TOKEN:   process.env.GH_TOKEN,
+            FIREBASE_API_KEY:      'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
+            FIREBASE_PROJECT_ID:   'v11345',
+            FIREBASE_USER_ID:      'sultan',
           };
 
           function gql(query) {
@@ -102,13 +104,15 @@ jobs:
           NODEJS
 
       - name: Telegram - Bot Deployed
+        continue-on-error: true
         env:
           BOT: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          MSG="Sultan Agent v6.0 Railway pe deploy! AI: Groq+Gemini+OpenAI ON. Web Search ON. Firebase connected. Bot thodi der mein message karega!"
           curl -s -o /dev/null --max-time 10 \
-            "https://api.telegram.org/bot${BOT}/sendMessage?chat_id=${CID}&text=${MSG}"
+            -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
+            -d "chat_id=${CID}" \
+            --data-urlencode "text=Sultan Agent v6.0 Railway pe deploy ho raha hai! Env vars set ho gaye. Bot thodi der mein online aayega!"
           echo "Telegram notified"
 
   # ─── Job 2: Build Android APK ────────────────────────────────────────────────
@@ -165,6 +169,7 @@ jobs:
             MSG="APK build fail hua. GitHub Actions dekho: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
           fi
           curl -s -o /dev/null --max-time 10 \
-            --data-urlencode "text=${MSG}" \
-            "https://api.telegram.org/bot${BOT}/sendMessage?chat_id=${CID}"
+            -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
+            -d "chat_id=${CID}" \
+            --data-urlencode "text=${MSG}"
           echo "Telegram notified - $RESULT"
