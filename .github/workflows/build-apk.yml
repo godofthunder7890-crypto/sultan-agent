@@ -36,20 +36,14 @@ jobs:
           set_var "FIREBASE_PROJECT_ID" "v11345"
           set_var "FIREBASE_USER_ID" "sultan"
           set_var "AI_REPLY_ENABLED" "true"
-
           echo ""
           echo "Triggering Railway deployment..."
-          DEPLOY_RESULT=$(curl -s -X POST https://backboard.railway.app/graphql/v2 \
+          curl -s -X POST https://backboard.railway.app/graphql/v2 \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"query\":\"mutation { serviceInstanceDeploy(serviceId: \\\"$SERVICE_ID\\\", environmentId: \\\"$ENV_ID\\\") }\"}")
-
-          echo "Deploy result: $DEPLOY_RESULT"
-          echo ""
-          echo "======================================"
-          echo "Sultan Agent Bot v5.0 deployed! ✅"
-          echo "Monitor: railway.app/project/$PROJECT_ID"
-          echo "======================================"
+            -d "{\"query\":\"mutation { serviceInstanceDeploy(serviceId: \\\"$SERVICE_ID\\\", environmentId: \\\"$ENV_ID\\\") }\"}" > /dev/null
+          echo "✅ Bot deployed to Railway!"
+          echo "Monitor: https://railway.app/project/$PROJECT_ID"
 
   # ─── Job 2: Build Android APK ────────────────────────────────────────────────
   build-apk:
@@ -62,11 +56,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.19.4
-          cache: npm
+          node-version: '20.x'
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
@@ -81,7 +74,5 @@ jobs:
 
       - name: Done
         run: |
-          echo "========================================="
           echo "APK build started on EAS!"
           echo "Track: expo.dev/accounts/blcobra858/projects/sultan-agent/builds"
-          echo "========================================="
