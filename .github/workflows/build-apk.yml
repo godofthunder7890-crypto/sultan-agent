@@ -1,4 +1,4 @@
-name: Build APK + Deploy Bot — Sultan Agent
+name: Deploy Bot + Build APK
 
 on:
   push:
@@ -6,73 +6,97 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ─── Job 1: Deploy Bot to Railway ─────────────────────────────────────────
+  # ─── Job 1: Deploy Bot to Railway ────────────────────────────────────────────
   deploy-bot:
     name: Deploy Bot to Railway
     runs-on: ubuntu-latest
     steps:
-      - name: Set all Railway env vars + trigger deploy
+      - name: Push all env vars to Railway via Node.js
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GROQ_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SERPER_KEY: ${{ secrets.SERPER_API_KEY }}
+          ELEVEN_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: |
-          PROJECT_ID="1450a2ad-ffe6-478f-97ae-4cabdd0f5dea"
-          SERVICE_ID="4e6ab161-cc6c-4945-81f6-b6242b4eb1f0"
-          ENV_ID="b591b4fe-3105-4155-aa48-aed73d794e5b"
+          node - << 'NODEJS'
+          const https = require('https');
+          const RAILWAY_TOKEN = process.env.RAILWAY_TOKEN;
+          const PROJECT_ID = '1450a2ad-ffe6-478f-97ae-4cabdd0f5dea';
+          const SERVICE_ID = '4e6ab161-cc6c-4945-81f6-b6242b4eb1f0';
+          const ENV_ID     = 'b591b4fe-3105-4155-aa48-aed73d794e5b';
 
-          set_var() {
-            curl -s -X POST https://backboard.railway.app/graphql/v2 \\
-              -H "Authorization: Bearer $RAILWAY_TOKEN" \\
-              -H "Content-Type: application/json" \\
-              -d "{\\"query\\":\\"mutation { variableUpsert(input: { projectId: \\\\\\\"$PROJECT_ID\\\\\\", environmentId: \\\\\\\"$ENV_ID\\\\\\", serviceId: \\\\\\\"$SERVICE_ID\\\\\\", name: \\\\\\\"$1\\\\\\", value: \\\\\\\"$2\\\\\\\" }) }\\"}" > /dev/null
-            echo "  Set $1 ✓"
+          const vars = {
+            TELEGRAM_BOT_TOKEN: process.env.TG_BOT_TOKEN,
+            ADMIN_CHAT_ID:       process.env.TG_CHAT_ID,
+            GROQ_API_KEY:        process.env.GROQ_KEY,
+            GEMINI_API_KEY:      process.env.GEMINI_KEY,
+            OPENAI_API_KEY:      process.env.OPENAI_KEY,
+            SERPER_API_KEY:      process.env.SERPER_KEY,
+            ELEVENLABS_API_KEY:  process.env.ELEVEN_KEY,
+            FIREBASE_API_KEY:    'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
+            FIREBASE_PROJECT_ID: 'v11345',
+            FIREBASE_USER_ID:    'sultan',
+          };
+
+          function gql(query) {
+            return new Promise((res, rej) => {
+              const body = JSON.stringify({ query });
+              const req = https.request({
+                hostname: 'backboard.railway.app',
+                path: '/graphql/v2', method: 'POST',
+                headers: {
+                  'Authorization': 'Bearer ' + RAILWAY_TOKEN,
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(body),
+                }
+              }, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => res(JSON.parse(d))); });
+              req.on('error', rej);
+              req.end(body);
+            });
           }
 
-          echo "=== Setting Railway environment variables ==="
-          set_var "TELEGRAM_BOT_TOKEN" "$TELEGRAM_BOT_TOKEN"
-          set_var "ADMIN_CHAT_ID" "$ADMIN_CHAT_ID"
-          set_var "GROQ_API_KEY" "$GROQ_API_KEY"
-          set_var "GEMINI_API_KEY" "$GEMINI_API_KEY"
-          set_var "OPENAI_API_KEY" "$OPENAI_API_KEY"
-          set_var "SERPER_API_KEY" "$SERPER_API_KEY"
-          set_var "ELEVENLABS_API_KEY" "$ELEVENLABS_API_KEY"
-          set_var "FIREBASE_API_KEY" "AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s"
-          set_var "FIREBASE_PROJECT_ID" "v11345"
-          set_var "FIREBASE_USER_ID" "sultan"
-          echo "=== All vars set! Triggering redeploy... ==="
+          (async () => {
+            let ok = 0, fail = 0;
+            for (const [name, value] of Object.entries(vars)) {
+              if (!value) { console.log('SKIP:', name); continue; }
+              const safe = value.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
+              const q = `mutation { variableUpsert(input: { projectId: "${PROJECT_ID}", environmentId: "${ENV_ID}", serviceId: "${SERVICE_ID}", name: "${name}", value: "${safe}" }) }`;
+              try {
+                const r = await gql(q);
+                if (r.errors) { console.log('FAIL:', name, r.errors[0]?.message); fail++; }
+                else { console.log('SET:', name, 'OK'); ok++; }
+              } catch(e) { console.log('ERR:', name, e.message); fail++; }
+            }
+            console.log('Done - OK:', ok, 'FAIL:', fail);
 
-          curl -s -X POST https://backboard.railway.app/graphql/v2 \\
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \\
-            -H "Content-Type: application/json" \\
-            -d '{"query":"mutation { serviceInstanceRedeploy(environmentId: \"b591b4fe-3105-4155-aa48-aed73d794e5b\", serviceId: \"4e6ab161-cc6c-4945-81f6-b6242b4eb1f0\") }"}' > /dev/null
+            // Trigger redeploy
+            const deploy = await gql(`mutation { serviceInstanceRedeploy(environmentId: "${ENV_ID}", serviceId: "${SERVICE_ID}") }`);
+            if (deploy.errors) console.log('Redeploy err:', deploy.errors[0]?.message);
+            else console.log('Railway redeploy triggered!');
+          })();
+          NODEJS
 
-          echo "✅ Bot v6.0 redeployed to Railway!"
-
-      - name: Notify Telegram — Bot Deployed
+      - name: Telegram - Bot Deployed
         env:
-          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          MSG="🚀 *Sultan Agent v6.0 — Railway Deploy!*%0A%0A✅ Bot deployed successfully!%0A🤖 AI: Groq ⚡ → Gemini 🔮 → OpenAI 🧠%0A🔍 Web Search: ON%0A🔥 Firebase: v11345%0A🚂 Railway: 24\/7 Online%0A%0A_$(date '+%Y-%m-%d %H:%M') UTC_"
-          curl -s "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${MSG}&parse_mode=Markdown" > /dev/null
-          echo "✅ Telegram notified!"
+          TEXT="Sultan Agent v6.0 Railway pe deploy ho gaya! AI: Groq + Gemini + OpenAI. Web search ON. Firebase v11345 connected. Bot thodi der mein respond karega!"
+          curl -s -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${TEXT}"
+          echo "Telegram notified!"
 
-  # ─── Job 2: Build Android APK ───────────────────────────────────────────────
+  # ─── Job 2: Build Android APK ────────────────────────────────────────────────
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
 
@@ -85,47 +109,45 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Auto-link EAS project + Build APK
+      - name: Link project + Build APK
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          echo "=== Logged in as ==="
+          echo "=== EAS Account ==="
           eas whoami
 
-          echo "=== Linking EAS project for this account ==="
-          # Get the owner from eas whoami (first word = username)
           OWNER=$(eas whoami | head -1 | awk '{print $1}')
           echo "Owner: $OWNER"
 
-          # Update app.json owner to match logged-in user
+          echo "=== Update app.json owner ==="
           node -e "
             const fs = require('fs');
-            const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            const app = JSON.parse(fs.readFileSync('app.json','utf8'));
             app.expo.owner = '$OWNER';
-            if (!app.expo.extra) app.expo.extra = {};
-            if (!app.expo.extra.eas) app.expo.extra.eas = {};
-            delete app.expo.extra.eas.projectId;
+            if(!app.expo.extra) app.expo.extra = {};
+            app.expo.extra.eas = {};
             fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
-            console.log('app.json updated — owner:', app.expo.owner);
+            console.log('app.json owner set to:', app.expo.owner);
           "
 
-          echo "=== Initializing EAS project ==="
+          echo "=== Init EAS project ==="
           eas project:init --non-interactive --force 2>/dev/null || true
 
-          echo "=== Starting APK build (no-wait — cloud build) ==="
+          echo "=== Submit build to EAS Cloud ==="
           eas build --platform android --profile production --non-interactive --no-wait
+          echo "APK submitted to EAS cloud!"
 
-      - name: Notify Telegram — APK Build Started
+      - name: Telegram - APK Build Status
         if: always()
         env:
-          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          STATUS: ${{ job.status }}
+          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
         run: |
-          if [ "$STATUS" = "success" ]; then
-            MSG="📱 *APK Build Started!*%0A%0A✅ EAS Cloud build submitted!%0ATrack at: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds%0A%0A_Build takes ~10-15 mins. Download link aayega automatically._"
+          if [ "$JOB_STATUS" = "success" ]; then
+            TEXT="APK build EAS cloud pe submit ho gaya! 10-15 min mein build hoga. Track karo: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds"
           else
-            MSG="❌ *APK Build Failed!*%0A%0AGitHub Actions mein error aaya.%0ACheck: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
+            TEXT="APK build fail hua. GitHub Actions check karo: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
           fi
-          curl -s "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${MSG}&parse_mode=Markdown" > /dev/null
-          echo "Telegram notified — Status: $STATUS"
+          curl -s -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${TEXT}"
+          echo "Telegram - Status: $JOB_STATUS"
