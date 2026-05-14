@@ -11,7 +11,8 @@ jobs:
     name: Deploy Bot to Railway
     runs-on: ubuntu-latest
     steps:
-      - name: Push all env vars to Railway via Node.js
+      - name: Push env vars to Railway (with retry)
+        continue-on-error: true
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -22,7 +23,7 @@ jobs:
           SERPER_KEY: ${{ secrets.SERPER_API_KEY }}
           ELEVEN_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: |
-          node - << 'NODEJS'
+          node << 'NODEJS'
           const https = require('https');
           const RAILWAY_TOKEN = process.env.RAILWAY_TOKEN;
           const PROJECT_ID = '1450a2ad-ffe6-478f-97ae-4cabdd0f5dea';
@@ -48,46 +49,67 @@ jobs:
               const req = https.request({
                 hostname: 'backboard.railway.app',
                 path: '/graphql/v2', method: 'POST',
+                timeout: 30000,
                 headers: {
                   'Authorization': 'Bearer ' + RAILWAY_TOKEN,
                   'Content-Type': 'application/json',
                   'Content-Length': Buffer.byteLength(body),
                 }
-              }, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => res(JSON.parse(d))); });
-              req.on('error', rej);
+              }, r => {
+                let d = '';
+                r.on('data', c => d += c);
+                r.on('end', () => {
+                  try { res(JSON.parse(d)); }
+                  catch { res({ _error: d.slice(0, 100) }); }
+                });
+              });
+              req.on('error', e => res({ _error: e.message }));
+              req.on('timeout', () => { req.destroy(); res({ _error: 'timeout' }); });
               req.end(body);
             });
           }
 
-          (async () => {
-            let ok = 0, fail = 0;
-            for (const [name, value] of Object.entries(vars)) {
-              if (!value) { console.log('SKIP:', name); continue; }
-              const safe = value.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
-              const q = `mutation { variableUpsert(input: { projectId: "${PROJECT_ID}", environmentId: "${ENV_ID}", serviceId: "${SERVICE_ID}", name: "${name}", value: "${safe}" }) }`;
-              try {
-                const r = await gql(q);
-                if (r.errors) { console.log('FAIL:', name, r.errors[0]?.message); fail++; }
-                else { console.log('SET:', name, 'OK'); ok++; }
-              } catch(e) { console.log('ERR:', name, e.message); fail++; }
+          async function setVar(name, value, retry = 3) {
+            if (!value) { console.log('SKIP:', name); return; }
+            const safe = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            const q = 'mutation { variableUpsert(input: { projectId: "' + PROJECT_ID + '", environmentId: "' + ENV_ID + '", serviceId: "' + SERVICE_ID + '", name: "' + name + '", value: "' + safe + '" }) }';
+            for (let i = 0; i < retry; i++) {
+              const r = await gql(q);
+              if (r._error) {
+                console.log('RETRY', i+1, name, '-', r._error);
+                await new Promise(r => setTimeout(r, 3000));
+              } else if (r.errors) {
+                console.log('FAIL:', name, '-', r.errors[0]?.message);
+                return;
+              } else {
+                console.log('OK:', name);
+                return;
+              }
             }
-            console.log('Done - OK:', ok, 'FAIL:', fail);
+            console.log('GIVE UP:', name);
+          }
 
-            // Trigger redeploy
-            const deploy = await gql(`mutation { serviceInstanceRedeploy(environmentId: "${ENV_ID}", serviceId: "${SERVICE_ID}") }`);
-            if (deploy.errors) console.log('Redeploy err:', deploy.errors[0]?.message);
+          (async () => {
+            for (const [name, value] of Object.entries(vars)) {
+              await setVar(name, value);
+            }
+            console.log('All vars done. Triggering redeploy...');
+            const deploy = await gql('mutation { serviceInstanceRedeploy(environmentId: "' + ENV_ID + '", serviceId: "' + SERVICE_ID + '") }');
+            if (deploy._error) console.log('Redeploy error:', deploy._error);
+            else if (deploy.errors) console.log('Redeploy error:', deploy.errors[0]?.message);
             else console.log('Railway redeploy triggered!');
-          })();
+          })().catch(e => console.log('Fatal:', e.message));
           NODEJS
 
       - name: Telegram - Bot Deployed
         env:
-          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BOT: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          TEXT="Sultan Agent v6.0 Railway pe deploy ho gaya! AI: Groq + Gemini + OpenAI. Web search ON. Firebase v11345 connected. Bot thodi der mein respond karega!"
-          curl -s -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${TEXT}"
-          echo "Telegram notified!"
+          MSG="Sultan Agent v6.0 Railway pe deploy! AI: Groq+Gemini+OpenAI ON. Web Search ON. Firebase connected. Bot thodi der mein message karega!"
+          curl -s -o /dev/null --max-time 10 \
+            "https://api.telegram.org/bot${BOT}/sendMessage?chat_id=${CID}&text=${MSG}"
+          echo "Telegram notified"
 
   # ─── Job 2: Build Android APK ────────────────────────────────────────────────
   build-apk:
@@ -109,45 +131,40 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Link project + Build APK
+      - name: Link EAS project + Submit APK build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          echo "=== EAS Account ==="
-          eas whoami
-
           OWNER=$(eas whoami | head -1 | awk '{print $1}')
-          echo "Owner: $OWNER"
+          echo "Logged in as: $OWNER"
 
-          echo "=== Update app.json owner ==="
           node -e "
             const fs = require('fs');
             const app = JSON.parse(fs.readFileSync('app.json','utf8'));
             app.expo.owner = '$OWNER';
-            if(!app.expo.extra) app.expo.extra = {};
+            if (!app.expo.extra) app.expo.extra = {};
             app.expo.extra.eas = {};
             fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
-            console.log('app.json owner set to:', app.expo.owner);
+            console.log('app.json owner updated to:', app.expo.owner);
           "
 
-          echo "=== Init EAS project ==="
           eas project:init --non-interactive --force 2>/dev/null || true
-
-          echo "=== Submit build to EAS Cloud ==="
           eas build --platform android --profile production --non-interactive --no-wait
-          echo "APK submitted to EAS cloud!"
+          echo "APK build submitted to EAS Cloud!"
 
-      - name: Telegram - APK Build Status
+      - name: Telegram - APK Status
         if: always()
         env:
-          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          JOB_STATUS: ${{ job.status }}
+          BOT: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RESULT: ${{ job.status }}
         run: |
-          if [ "$JOB_STATUS" = "success" ]; then
-            TEXT="APK build EAS cloud pe submit ho gaya! 10-15 min mein build hoga. Track karo: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds"
+          if [ "$RESULT" = "success" ]; then
+            MSG="APK build EAS cloud pe submit ho gaya! 10-15 min mein tayar hoga. Track: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds"
           else
-            TEXT="APK build fail hua. GitHub Actions check karo: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
+            MSG="APK build fail hua. GitHub Actions dekho: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
           fi
-          curl -s -o /dev/null "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${TEXT}"
-          echo "Telegram - Status: $JOB_STATUS"
+          curl -s -o /dev/null --max-time 10 \
+            --data-urlencode "text=${MSG}" \
+            "https://api.telegram.org/bot${BOT}/sendMessage?chat_id=${CID}"
+          echo "Telegram notified - $RESULT"
