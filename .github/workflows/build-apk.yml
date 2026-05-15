@@ -14,16 +14,17 @@ jobs:
       - name: Push env vars to Railway (with retry)
         continue-on-error: true
         env:
-          RAILWAY_TOKEN:   ${{ secrets.RAILWAY_TOKEN }}
-          TG_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TG_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
-          GROQ_KEY:        ${{ secrets.GROQ_API_KEY }}
-          GEMINI_KEY:      ${{ secrets.GEMINI_API_KEY }}
-          OPENAI_KEY:      ${{ secrets.OPENAI_API_KEY }}
-          SERPER_KEY:      ${{ secrets.SERPER_API_KEY }}
-          ELEVEN_KEY:      ${{ secrets.ELEVENLABS_API_KEY }}
-          EXPO_KEY:        ${{ secrets.EXPO_TOKEN }}
-          GH_PAT:          ${{ secrets.GITHUB_TOKEN }}
+          RAILWAY_TOKEN:    ${{ secrets.RAILWAY_TOKEN }}
+          TG_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
+          GROQ_KEY:         ${{ secrets.GROQ_API_KEY }}
+          GEMINI_KEY:       ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          CLAUDE_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
+          SERPER_KEY:       ${{ secrets.SERPER_API_KEY }}
+          ELEVEN_KEY:       ${{ secrets.ELEVENLABS_API_KEY }}
+          EXPO_KEY:         ${{ secrets.EXPO_TOKEN }}
+          GH_PAT:           ${{ secrets.GITHUB_TOKEN }}
         run: |
           node << 'NODEJS'
           const https = require('https');
@@ -38,6 +39,7 @@ jobs:
             GROQ_API_KEY:         process.env.GROQ_KEY,
             GEMINI_API_KEY:       process.env.GEMINI_KEY,
             OPENAI_API_KEY:       process.env.OPENAI_KEY,
+            ANTHROPIC_API_KEY:    process.env.CLAUDE_KEY,
             SERPER_API_KEY:       process.env.SERPER_KEY,
             ELEVENLABS_API_KEY:   process.env.ELEVEN_KEY,
             EXPO_TOKEN:           process.env.EXPO_KEY,
@@ -91,7 +93,7 @@ jobs:
           curl -s -o /dev/null --max-time 10 \
             -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
             -d "chat_id=${CID}" \
-            --data-urlencode "text=Sultan Agent v6.0 Railway pe deploy ho gaya! Sab env vars set. APK auto-download bhi active!"
+            --data-urlencode "text=Sultan Agent v7.0 God Mode ALL AI deployed! Groq+Gemini+OpenAI+Claude active!"
           echo "Telegram notified"
 
   # ─── Job 2: Build Android APK ────────────────────────────────────────────────
