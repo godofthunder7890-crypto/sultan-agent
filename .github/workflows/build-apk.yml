@@ -19,7 +19,7 @@ jobs:
       - name: Set env vars on Railway
         continue-on-error: true
         env:
-          RAILWAY_TOKEN:    ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_TOKEN:    ${{ secrets.RAILWAY_API_KEY }}
           TG_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
           GROQ_KEY:         ${{ secrets.GROQ_API_KEY }}
@@ -69,7 +69,7 @@ jobs:
           }
 
           async function setVar(name, value, retry=3) {
-            if (!value) { console.log('SKIP:', name); return; }
+            if (!value) { console.log('SKIP (empty):', name); return; }
             const safe = value.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
             const q = 'mutation { variableUpsert(input: { projectId:"'+PROJECT_ID+'", environmentId:"'+ENV_ID+'", serviceId:"'+SERVICE_ID+'", name:"'+name+'", value:"'+safe+'" }) }';
             for (let i=0; i<retry; i++) {
@@ -83,16 +83,16 @@ jobs:
 
           (async()=>{
             for (const [name, value] of Object.entries(vars)) await setVar(name, value);
-            console.log('All vars set!');
+            console.log('All vars done!');
           })().catch(e=>console.log('Fatal:',e.message));
           NODEJS
 
-      - name: Deploy bot-server code to Railway CLI
+      - name: Deploy bot-server code via Railway CLI
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_KEY }}
         run: |
           cd bot-server
-          echo "Deploying bot-server to Railway..."
+          echo "Deploying bot-server to Railway with RAILWAY_API_KEY..."
           railway up \
             --service 4e6ab161-cc6c-4945-81f6-b6242b4eb1f0 \
             --environment b591b4fe-3105-4155-aa48-aed73d794e5b \
@@ -100,16 +100,22 @@ jobs:
           echo "Deploy submitted!"
 
       - name: Telegram - Bot Deployed
+        if: always()
         continue-on-error: true
         env:
           BOT: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STATUS: ${{ job.status }}
         run: |
+          if [ "$STATUS" = "success" ]; then
+            MSG="Sultan Agent v7.0 God Mode deploy ho gaya Railway pe! Groq+Gemini+OpenAI active. /status check karo!"
+          else
+            MSG="Railway deploy fail hua. Logs: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
+          fi
           curl -s -o /dev/null --max-time 10 \
             -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
             -d "chat_id=${CID}" \
-            --data-urlencode "text=Sultan Agent v7.0 God Mode ALL AI deploy ho gaya Railway pe! Groq+Gemini+OpenAI+Claude active. /status check karo!"
-          echo "Telegram notified"
+            --data-urlencode "text=${MSG}"
 
   # ─── Job 2: Build Android APK ────────────────────────────────────────────────
   build-apk:
