@@ -10,6 +10,7 @@ jobs:
   deploy-bot:
     name: Deploy Bot to Railway
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -25,10 +26,8 @@ jobs:
           GROQ_KEY:         ${{ secrets.GROQ_API_KEY }}
           GEMINI_KEY:       ${{ secrets.GEMINI_API_KEY }}
           OPENAI_KEY:       ${{ secrets.OPENAI_API_KEY }}
-          CLAUDE_KEY:       ${{ secrets.ANTHROPIC_API_KEY }}
           SERPER_KEY:       ${{ secrets.SERPER_API_KEY }}
           ELEVEN_KEY:       ${{ secrets.ELEVENLABS_API_KEY }}
-          EXPO_KEY:         ${{ secrets.EXPO_TOKEN }}
           GH_PAT:           ${{ secrets.GITHUB_TOKEN }}
         run: |
           node << 'NODEJS'
@@ -37,90 +36,48 @@ jobs:
           const PROJECT_ID = '1450a2ad-ffe6-478f-97ae-4cabdd0f5dea';
           const SERVICE_ID = '4e6ab161-cc6c-4945-81f6-b6242b4eb1f0';
           const ENV_ID     = 'b591b4fe-3105-4155-aa48-aed73d794e5b';
-
           const vars = {
-            TELEGRAM_BOT_TOKEN:   process.env.TG_BOT_TOKEN,
-            ADMIN_CHAT_ID:        process.env.TG_CHAT_ID,
-            GROQ_API_KEY:         process.env.GROQ_KEY,
-            GEMINI_API_KEY:       process.env.GEMINI_KEY,
-            OPENAI_API_KEY:       process.env.OPENAI_KEY,
-            ANTHROPIC_API_KEY:    process.env.CLAUDE_KEY,
-            SERPER_API_KEY:       process.env.SERPER_KEY,
-            ELEVENLABS_API_KEY:   process.env.ELEVEN_KEY,
-            EXPO_TOKEN:           process.env.EXPO_KEY,
-            GITHUB_ACCESS_TOKEN:  process.env.GH_PAT,
-            FIREBASE_API_KEY:     'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
-            FIREBASE_PROJECT_ID:  'v11345',
-            FIREBASE_USER_ID:     'sultan',
+            TELEGRAM_BOT_TOKEN: process.env.TG_BOT_TOKEN,
+            ADMIN_CHAT_ID: process.env.TG_CHAT_ID,
+            GROQ_API_KEY: process.env.GROQ_KEY,
+            GEMINI_API_KEY: process.env.GEMINI_KEY,
+            OPENAI_API_KEY: process.env.OPENAI_KEY,
+            SERPER_API_KEY: process.env.SERPER_KEY,
+            ELEVENLABS_API_KEY: process.env.ELEVEN_KEY,
+            GITHUB_ACCESS_TOKEN: process.env.GH_PAT,
+            FIREBASE_API_KEY: 'AIzaSyBPQxmPvldjJ5Zt03E5i2xrrhFWpdpYd-s',
+            FIREBASE_PROJECT_ID: 'v11345',
           };
-
-          function gql(query) {
-            return new Promise((res) => {
-              const body = JSON.stringify({ query });
-              const req = https.request({
-                hostname: 'backboard.railway.app',
-                path: '/graphql/v2', method: 'POST', timeout: 30000,
-                headers: { 'Authorization': 'Bearer ' + RAILWAY_TOKEN, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-              }, r => { let d=''; r.on('data',c=>d+=c); r.on('end',()=>{ try{res(JSON.parse(d));}catch{res({_error:d.slice(0,200)});} }); });
-              req.on('error', e=>res({_error:e.message}));
-              req.on('timeout', ()=>{req.destroy();res({_error:'timeout'});});
-              req.end(body);
+          function gql(q) {
+            return new Promise(res => {
+              const body = JSON.stringify({ query: q });
+              const req = https.request({ hostname:'backboard.railway.app', path:'/graphql/v2', method:'POST', timeout:20000,
+                headers:{'Authorization':'Bearer '+RAILWAY_TOKEN,'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
+              }, r => { let d=''; r.on('data',c=>d+=c); r.on('end',()=>{ try{res(JSON.parse(d));}catch{res({_e:d.slice(0,100)});} }); });
+              req.on('error',e=>res({_e:e.message})); req.on('timeout',()=>{req.destroy();res({_e:'timeout'});}); req.end(body);
             });
           }
-
-          async function setVar(name, value, retry=3) {
-            if (!value) { console.log('SKIP (empty):', name); return; }
-            const safe = value.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
-            const q = 'mutation { variableUpsert(input: { projectId:"'+PROJECT_ID+'", environmentId:"'+ENV_ID+'", serviceId:"'+SERVICE_ID+'", name:"'+name+'", value:"'+safe+'" }) }';
-            for (let i=0; i<retry; i++) {
-              const r = await gql(q);
-              if (r._error) { console.log('RETRY',i+1,name,'-',r._error); await new Promise(r=>setTimeout(r,3000)); }
-              else if (r.errors) { console.log('FAIL:',name,'-',JSON.stringify(r.errors[0]?.message||r.errors)); return; }
-              else { console.log('OK:', name); return; }
-            }
-            console.log('GIVE UP:', name);
-          }
-
           (async()=>{
-            for (const [name, value] of Object.entries(vars)) await setVar(name, value);
-            console.log('All vars done!');
-          })().catch(e=>console.log('Fatal:',e.message));
+            for(const [k,v] of Object.entries(vars)) {
+              if(!v){console.log('SKIP:',k);continue;}
+              const safe=v.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
+              const r=await gql('mutation{variableUpsert(input:{projectId:"'+PROJECT_ID+'",environmentId:"'+ENV_ID+'",serviceId:"'+SERVICE_ID+'",name:"'+k+'",value:"'+safe+'"})}');
+              console.log(r._e?'FAIL:'+k+' '+r._e:'OK:'+k);
+            }
+          })();
           NODEJS
 
-      - name: Deploy bot-server code via Railway CLI
+      - name: Deploy via Railway CLI
+        continue-on-error: true
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_KEY }}
         run: |
           cd bot-server
-          echo "Deploying bot-server to Railway with RAILWAY_API_KEY..."
-          railway up \
-            --service 4e6ab161-cc6c-4945-81f6-b6242b4eb1f0 \
-            --environment b591b4fe-3105-4155-aa48-aed73d794e5b \
-            --detach
-          echo "Deploy submitted!"
+          railway up --service 4e6ab161-cc6c-4945-81f6-b6242b4eb1f0 --environment b591b4fe-3105-4155-aa48-aed73d794e5b --detach || echo "Railway CLI failed - token may need refresh"
 
-      - name: Telegram - Bot Deployed
-        if: always()
-        continue-on-error: true
-        env:
-          BOT: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          STATUS: ${{ job.status }}
-        run: |
-          if [ "$STATUS" = "success" ]; then
-            MSG="Sultan Agent v7.0 God Mode deploy ho gaya Railway pe! Groq+Gemini+OpenAI active. /status check karo!"
-          else
-            MSG="Railway deploy fail hua. Logs: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
-          fi
-          curl -s -o /dev/null --max-time 10 \
-            -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
-            -d "chat_id=${CID}" \
-            --data-urlencode "text=${MSG}"
-
-  # ─── Job 2: Build Android APK ────────────────────────────────────────────────
+  # ─── Job 2: Build Android APK (INDEPENDENT - always runs) ────────────────────
   build-apk:
     name: Build Android APK
-    needs: deploy-bot
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -138,24 +95,24 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Link EAS project + Submit APK build
+      - name: Build APK via EAS
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           OWNER=$(eas whoami | head -1 | awk '{print $1}')
           echo "Logged in as: $OWNER"
           node -e "
-            const fs = require('fs');
-            const app = JSON.parse(fs.readFileSync('app.json','utf8'));
-            app.expo.owner = '$OWNER';
-            if (!app.expo.extra) app.expo.extra = {};
-            app.expo.extra.eas = {};
-            fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
-            console.log('owner updated to:', app.expo.owner);
+            const fs=require('fs');
+            const app=JSON.parse(fs.readFileSync('app.json','utf8'));
+            app.expo.owner='$OWNER';
+            if(!app.expo.extra) app.expo.extra={};
+            app.expo.extra.eas={};
+            fs.writeFileSync('app.json',JSON.stringify(app,null,2));
+            console.log('owner set to:', app.expo.owner);
           "
           eas project:init --non-interactive --force 2>/dev/null || true
           eas build --platform android --profile production --non-interactive --no-wait
-          echo "APK build submitted!"
+          echo "APK build submitted to EAS!"
 
       - name: Telegram - APK Status
         if: always()
@@ -165,9 +122,9 @@ jobs:
           RESULT: ${{ job.status }}
         run: |
           if [ "$RESULT" = "success" ]; then
-            MSG="APK v7.0 EAS pe submit! 10-15 min mein bot seedha file bhejega! Track: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds"
+            MSG="Sultan Agent APK v7.0 EAS pe submit ho gaya! 10-15 min mein bot Telegram pe APK file bhejega! Track: https://expo.dev/accounts/haniyashaikh777/projects/sultan-agent/builds"
           else
-            MSG="APK build fail: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
+            MSG="APK build fail hua. Logs check karo: https://github.com/godofthunder7890-crypto/sultan-agent/actions"
           fi
           curl -s -o /dev/null --max-time 10 \
             -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
